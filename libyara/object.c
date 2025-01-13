@@ -39,6 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <yara/globals.h>
 #include <yara/mem.h>
 #include <yara/object.h>
+#include <yara/strutils.h>
 #include <yara/utils.h>
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -57,6 +58,7 @@ int yr_object_create(
   size_t object_size = 0;
 
   assert(parent != NULL || object != NULL);
+  assert(identifier != NULL);
 
   switch (type)
   {
@@ -653,7 +655,7 @@ int yr_object_structure_set_member(YR_OBJECT* object, YR_OBJECT* member)
   return ERROR_SUCCESS;
 }
 
-int yr_object_array_length(YR_OBJECT* object)
+YR_API int yr_object_array_length(YR_OBJECT* object)
 {
   YR_OBJECT_ARRAY* array;
 
@@ -666,7 +668,8 @@ int yr_object_array_length(YR_OBJECT* object)
   return array->items->length;
 }
 
-YR_OBJECT* yr_object_array_get_item(YR_OBJECT* object, int flags, int index)
+YR_API YR_OBJECT* yr_object_array_get_item(YR_OBJECT* object, int flags,
+                                           int index)
 {
   YR_OBJECT* result = NULL;
   YR_OBJECT_ARRAY* array;

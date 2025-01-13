@@ -75,6 +75,38 @@ int main(int argc, char** argv)
       "import \"math\" \
       rule test { \
         condition: \
+          math.count(0x41, 4, 10) == 1  \
+      }",
+      "AABAAB");
+
+  assert_true_rule_blob(
+      "import \"math\" \
+      rule test { \
+        condition: \
+          not defined math.count(0x41, 10, 3)  \
+      }",
+      "AABAAB");
+
+  assert_true_rule_blob(
+      "import \"math\" \
+      rule test { \
+        condition: \
+          not defined math.count(0x41, 0, -3)  \
+      }",
+      "AABAAB");
+
+  assert_true_rule_blob(
+      "import \"math\" \
+      rule test { \
+        condition: \
+          not defined math.count(-1)  \
+      }",
+      "AABAAB");
+
+  assert_true_rule_blob(
+      "import \"math\" \
+      rule test { \
+        condition: \
           math.count(0x41) == 2 \
       }",
       "ABAB");
@@ -85,7 +117,7 @@ int main(int argc, char** argv)
         condition: \
           math.percentage(0x41) > 0.39 and math.percentage(0x41) < 0.41 \
       }",
-      "ABAB"); // Blob matching includes terminating zero byte
+      "ABAB");  // Blob matching includes terminating zero byte
 
   assert_true_rule_blob(
       "import \"math\" \
@@ -99,9 +131,49 @@ int main(int argc, char** argv)
       "import \"math\" \
       rule test { \
         condition: \
+          not defined math.percentage(0x41, 0, 0) \
+      }",
+      "AABAAB");
+
+  assert_true_rule_blob(
+      "import \"math\" \
+      rule test { \
+        condition: \
+          not defined math.percentage(0x41, 10, 3)  \
+      }",
+      "AABAAB");
+
+  assert_true_rule_blob(
+      "import \"math\" \
+      rule test { \
+        condition: \
+          not defined math.percentage(0x41, 0, -3)  \
+      }",
+      "AABAAB");
+
+  assert_true_rule_blob(
+      "import \"math\" \
+      rule test { \
+        condition: \
+          not defined math.percentage(-1)  \
+      }",
+      "AABAAB");
+
+  assert_true_rule_blob(
+      "import \"math\" \
+      rule test { \
+        condition: \
           math.mode() == 0x41 \
       }",
       "ABABA");
+
+  assert_true_rule_blob(
+      "import \"math\" \
+      rule test { \
+        condition: \
+          math.mode() == 0x41 \
+      }",
+      "ABAB");
 
   assert_true_rule_blob(
       "import \"math\" \
@@ -116,6 +188,14 @@ int main(int argc, char** argv)
       rule test { \
         condition: \
           math.entropy(\"AAAAA\") == 0.0 \
+      }",
+      NULL);
+
+  assert_true_rule(
+      "import \"math\" \
+      rule test { \
+        condition: \
+          math.entropy(\"\") == 0.0 \
       }",
       NULL);
 
@@ -179,7 +259,7 @@ int main(int argc, char** argv)
       "import \"math\" \
       rule test { \
         condition: \
-          math.serial_correlation(\"BCAB\") == -0.5 \
+          math.serial_correlation(\"BCA\") == -0.5 \
       }",
       NULL);
 
@@ -187,7 +267,7 @@ int main(int argc, char** argv)
       "import \"math\" \
       rule test { \
         condition: \
-          math.serial_correlation(1, 4) == -0.5 \
+          math.serial_correlation(1, 3) == -0.5 \
       }",
       "ABCABC");
 
@@ -222,6 +302,67 @@ int main(int argc, char** argv)
           math.monte_carlo_pi(3, 15) < 0.3 \
       }",
       "123ABCDEF123456987DE");
+
+  assert_true_rule(
+      "import \"math\" \
+      rule test { \
+        condition: \
+          math.to_string(1234) == \"1234\" \
+      }",
+      NULL);
+
+  // We use signed integers by default if no base is specified.
+  assert_true_rule(
+      "import \"math\" \
+      rule test { \
+        condition: \
+          math.to_string(-1) == \"-1\" \
+      }",
+      NULL);
+
+  assert_true_rule(
+      "import \"math\" \
+      rule test { \
+        condition: \
+          math.to_string(32, 16) == \"20\" \
+      }",
+      NULL);
+
+  assert_true_rule(
+      "import \"math\" \
+      rule test { \
+        condition: \
+          math.to_string(32, 8) == \"40\" \
+      }",
+      NULL);
+
+  assert_true_rule(
+      "import \"math\" \
+      rule test { \
+        condition: \
+          math.to_string(32, 10) == \"32\" \
+      }",
+      NULL);
+
+  // Base 10 is always a signed integer, all other bases are unsigned.
+  assert_true_rule(
+      "import \"math\" \
+      rule test { \
+        condition: \
+          math.to_string(-1, 10) == \"-1\" and \
+          math.to_string(-1, 16) == \"ffffffffffffffff\" and \
+          math.to_string(-1, 8) == \"1777777777777777777777\" \
+      }",
+      NULL);
+
+  // Passing a base that is not 10, 8 or 16 will result in UNDEFINED.
+  assert_true_rule(
+      "import \"math\" \
+      rule test { \
+        condition: \
+          not defined(math.to_string(32, 9)) \
+      }",
+      NULL);
 
   yr_finalize();
 

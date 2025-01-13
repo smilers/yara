@@ -40,15 +40,24 @@ define_function(log_string)
   // We are intentionally using sized strings here as we may be needing to
   // output strings with a null character in the middle.
   SIZED_STRING* s = sized_string_argument(1);
-  YR_SCAN_CONTEXT* ctx = scan_context();
+  YR_SCAN_CONTEXT* ctx = yr_scan_context();
   YR_CALLBACK_FUNC callback = ctx->callback;
 
   // Assume the entire string is non-printable, so allocate 4 times the
   // space so that we can represent each byte as an escaped value. eg: \x00
   // Add an extra byte for the NULL terminator.
-  char* msg = (char*) yr_calloc((s->length * 4) + 1, sizeof(char));
-  if (msg == NULL)
-    return_integer(YR_UNDEFINED);
+  char* msg;
+  if (s->length == 0)
+  {
+    callback(ctx, CALLBACK_MSG_CONSOLE_LOG, (void*) "", ctx->user_data);
+    return_integer(1);
+  }
+  else
+  {
+    msg = (char*) yr_calloc((s->length * 4) + 1, sizeof(char));
+    if (msg == NULL)
+      return_integer(YR_UNDEFINED);
+  }
 
   char* p = msg;
   for (size_t i = 0; i < s->length; i++)
@@ -78,7 +87,7 @@ define_function(log_string_msg)
   // We are intentionally using sized strings here as we may be needing to
   // output strings with a null character in the middle.
   SIZED_STRING* s = sized_string_argument(2);
-  YR_SCAN_CONTEXT* ctx = scan_context();
+  YR_SCAN_CONTEXT* ctx = yr_scan_context();
   YR_CALLBACK_FUNC callback = ctx->callback;
 
   // Assume the entire string is non-printable, so allocate 4 times the
@@ -86,7 +95,7 @@ define_function(log_string_msg)
   // Add an extra byte for the NULL terminator.
   size_t msg_len = strlen(m) + (s->length * 4) + 1;
   char* msg = (char*) yr_calloc(msg_len, sizeof(char));
-  if (msg == NULL)
+  if (msg == NULL && msg_len > 0)
     return_integer(YR_UNDEFINED);
 
   char* p = msg;
@@ -117,7 +126,7 @@ define_function(log_integer)
 {
   char* msg = NULL;
   int64_t i = integer_argument(1);
-  YR_SCAN_CONTEXT* ctx = scan_context();
+  YR_SCAN_CONTEXT* ctx = yr_scan_context();
   YR_CALLBACK_FUNC callback = ctx->callback;
 
   yr_asprintf(&msg, "%lli", i);
@@ -138,7 +147,7 @@ define_function(log_integer_msg)
   char* msg = NULL;
   char* s = string_argument(1);
   int64_t i = integer_argument(2);
-  YR_SCAN_CONTEXT* ctx = scan_context();
+  YR_SCAN_CONTEXT* ctx = yr_scan_context();
   YR_CALLBACK_FUNC callback = ctx->callback;
 
   yr_asprintf(&msg, "%s%lli", s, i);
@@ -158,7 +167,7 @@ define_function(log_float)
 {
   char* msg = NULL;
   double f = float_argument(1);
-  YR_SCAN_CONTEXT* ctx = scan_context();
+  YR_SCAN_CONTEXT* ctx = yr_scan_context();
   YR_CALLBACK_FUNC callback = ctx->callback;
 
   yr_asprintf(&msg, "%f", f);
@@ -179,7 +188,7 @@ define_function(log_float_msg)
   char* msg = NULL;
   char* s = string_argument(1);
   double f = float_argument(2);
-  YR_SCAN_CONTEXT* ctx = scan_context();
+  YR_SCAN_CONTEXT* ctx = yr_scan_context();
   YR_CALLBACK_FUNC callback = ctx->callback;
 
   yr_asprintf(&msg, "%s%f", s, f);
@@ -199,7 +208,7 @@ define_function(hex_integer)
 {
   char* msg = NULL;
   int64_t i = integer_argument(1);
-  YR_SCAN_CONTEXT* ctx = scan_context();
+  YR_SCAN_CONTEXT* ctx = yr_scan_context();
   YR_CALLBACK_FUNC callback = ctx->callback;
 
   yr_asprintf(&msg, "0x%llx", i);
@@ -220,7 +229,7 @@ define_function(hex_integer_msg)
   char* msg = NULL;
   char* s = string_argument(1);
   int64_t i = integer_argument(2);
-  YR_SCAN_CONTEXT* ctx = scan_context();
+  YR_SCAN_CONTEXT* ctx = yr_scan_context();
   YR_CALLBACK_FUNC callback = ctx->callback;
 
   yr_asprintf(&msg, "%s0x%llx", s, i);

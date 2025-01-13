@@ -879,8 +879,8 @@ static int _yr_atoms_extract_from_re(
   YR_STACK* stack;
   RE_NODE* re_node;
 
-  YR_ATOM atom;
-  YR_ATOM best_atom;
+  YR_ATOM atom = {0};
+  YR_ATOM best_atom = {0};
 
   struct STACK_ITEM si;
 
@@ -1353,22 +1353,6 @@ int yr_atoms_extract_from_re(
         });
 
     *atoms = _yr_atoms_list_concat(*atoms, case_insensitive_atoms);
-  }
-
-  // No atoms has been extracted, let's add a zero-length atom.
-
-  if (*atoms == NULL)
-  {
-    *atoms = (YR_ATOM_LIST_ITEM*) yr_malloc(sizeof(YR_ATOM_LIST_ITEM));
-
-    if (*atoms == NULL)
-      return ERROR_INSUFFICIENT_MEMORY;
-
-    (*atoms)->atom.length = 0;
-    (*atoms)->backtrack = 0;
-    (*atoms)->forward_code_ref = re_ast->root_node->forward_code_ref;
-    (*atoms)->backward_code_ref = YR_ARENA_NULL_REF;
-    (*atoms)->next = NULL;
   }
 
   return ERROR_SUCCESS;

@@ -12,8 +12,8 @@ Compiling and installing YARA
 
 Download the source tarball and get prepared for compiling it::
 
-    tar -zxf yara-4.2.0.tar.gz
-    cd yara-4.2.0
+    tar -zxf yara-4.5.0.tar.gz
+    cd yara-4.5.0
     ./bootstrap.sh
 
 Make sure you have ``automake``, ``libtool``, ``make``  and ``gcc`` and ``pkg-config`` installed in your system. Ubuntu and Debian users can use::
@@ -48,7 +48,6 @@ The following modules are not compiled into YARA by default:
 
 * cuckoo
 * magic
-* dotnet
 
 If you plan to use them you must pass the corresponding ``--enable-<module
 name>`` arguments to the ``configure`` script.
@@ -57,8 +56,7 @@ For example::
 
     ./configure --enable-cuckoo
     ./configure --enable-magic
-    ./configure --enable-dotnet
-    ./configure --enable-cuckoo --enable-magic --enable-dotnet
+    ./configure --enable-cuckoo --enable-magic
 
 Modules usually depend on external libraries, depending on the modules you
 choose to install you'll need the following libraries:
@@ -154,6 +152,13 @@ libraries in this path by default, we must instruct it to do so by adding
 ``/usr/local/lib`` to the loader configuration file ``/etc/ld.so.conf``::
 
     sudo sh -c 'echo "/usr/local/lib" >> /etc/ld.so.conf'
+    sudo ldconfig
+
+On newer Ubuntu releases such as 22.04 LTS, the correct loader configuration is
+installed via dependencies to ``/etc/ld.so.conf.d/libc.conf``. In this case, the
+following command alone is sufficient to configure the dynamic linker run-time
+bindings.
+
     sudo ldconfig
 
 If you're using Windows PowerShell as your command shell, ``yara my_first_rule my_first_rule`` may return this error::
