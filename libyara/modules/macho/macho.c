@@ -35,7 +35,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define MODULE_NAME macho
 
 // Check for Mach-O binary magic constant.
-
 int is_macho_file_block(const uint32_t* magic)
 {
   return *magic == MH_MAGIC || *magic == MH_CIGAM || *magic == MH_MAGIC_64 ||
@@ -43,23 +42,12 @@ int is_macho_file_block(const uint32_t* magic)
 }
 
 // Check if file is for 32-bit architecture.
-
-int macho_is_32(const uint8_t* magic)
+int macho_is_32(uint32_t magic)
 {
-  // Magic must be [CE]FAEDFE or FEEDFA[CE].
-  return magic[0] == 0xce || magic[3] == 0xce;
-}
-
-// Check if file is for big-endian architecture.
-
-int macho_is_big(const uint8_t* magic)
-{
-  // Magic must be [FE]EDFACE or [FE]EDFACF.
-  return magic[0] == 0xfe;
+  return magic == MH_MAGIC || magic == MH_CIGAM;
 }
 
 // Check for Mach-O fat binary magic constant.
-
 int is_fat_macho_file_block(const uint32_t* magic)
 {
   return *magic == FAT_MAGIC || *magic == FAT_CIGAM || *magic == FAT_MAGIC_64 ||
@@ -67,17 +55,23 @@ int is_fat_macho_file_block(const uint32_t* magic)
 }
 
 // Check if file is 32-bit fat file.
-
-int macho_fat_is_32(const uint8_t* magic)
+int macho_fat_is_32(const uint32_t* magic)
 {
-  // Magic must be CAFEBA[BE].
-  return magic[3] == 0xbe;
+  return yr_be32toh(*magic) == FAT_MAGIC;
 }
 
 static int should_swap_bytes(const uint32_t magic)
 {
+// In big-endian platforms byte swapping is needed for little-endian files
+// but in little-endian platforms the files that need swapping are the
+// the big-endian ones.
+#if defined(WORDS_BIGENDIAN)
   return magic == MH_CIGAM || magic == MH_CIGAM_64 || magic == FAT_CIGAM ||
          magic == FAT_CIGAM_64;
+#else
+  return magic == MH_MAGIC || magic == MH_MAGIC_64 || magic == FAT_MAGIC ||
+         magic == FAT_MAGIC_64;
+#endif
 }
 
 static void swap_mach_header(yr_mach_header_64_t* mh)
@@ -90,7 +84,7 @@ static void swap_mach_header(yr_mach_header_64_t* mh)
   mh->sizeofcmds = yr_bswap32(mh->sizeofcmds);
   mh->flags = yr_bswap32(mh->flags);
 
-  if (!macho_is_32((const uint8_t*) &mh->magic))
+  if (!macho_is_32(mh->magic))
     mh->reserved = yr_bswap32(mh->reserved);
 }
 
@@ -167,16 +161,16 @@ static void swap_entry_point_command(yr_entry_point_command_t* ep_command)
 
 bool macho_rva_to_offset(uint64_t address, uint64_t* result, YR_OBJECT* object)
 {
-  uint64_t segment_count = get_integer(object, "number_of_segments");
+  uint64_t segment_count = yr_get_integer(object, "number_of_segments");
 
   for (int i = 0; i < segment_count; i++)
   {
-    uint64_t start = get_integer(object, "segments[%i].vmaddr", i);
-    uint64_t end = start + get_integer(object, "segments[%i].vmsize", i);
+    uint64_t start = yr_get_integer(object, "segments[%i].vmaddr", i);
+    uint64_t end = start + yr_get_integer(object, "segments[%i].vmsize", i);
 
     if (address >= start && address < end)
     {
-      uint64_t fileoff = get_integer(object, "segments[%i].fileoff", i);
+      uint64_t fileoff = yr_get_integer(object, "segments[%i].fileoff", i);
       *result = fileoff + (address - start);
       return true;
     }
@@ -189,16 +183,16 @@ bool macho_rva_to_offset(uint64_t address, uint64_t* result, YR_OBJECT* object)
 
 int macho_offset_to_rva(uint64_t offset, uint64_t* result, YR_OBJECT* object)
 {
-  uint64_t segment_count = get_integer(object, "number_of_segments");
+  uint64_t segment_count = yr_get_integer(object, "number_of_segments");
 
   for (int i = 0; i < segment_count; i++)
   {
-    uint64_t start = get_integer(object, "segments[%i].fileoff", i);
-    uint64_t end = start + get_integer(object, "segments[%i].filesize", i);
+    uint64_t start = yr_get_integer(object, "segments[%i].fileoff", i);
+    uint64_t end = start + yr_get_integer(object, "segments[%i].fsize", i);
 
     if (offset >= start && offset < end)
     {
-      uint64_t vmaddr = get_integer(object, "segments[%i].vmaddr", i);
+      uint64_t vmaddr = yr_get_integer(object, "segments[%i].vmaddr", i);
       *result = vmaddr + (offset - start);
       return true;
     }
@@ -211,18 +205,19 @@ int macho_offset_to_rva(uint64_t offset, uint64_t* result, YR_OBJECT* object)
 void macho_handle_unixthread(
     const uint8_t* data,
     size_t size,
+    uint64_t base_address,
     YR_OBJECT* object,
     YR_SCAN_CONTEXT* context)
 {
-  int should_swap = should_swap_bytes(get_integer(object, "magic"));
+  int should_swap = should_swap_bytes(yr_get_integer(object, "magic"));
   bool is64 = false;
 
   if (size < sizeof(yr_thread_command_t))
     return;
 
   // command_size is the size indicated in yr_thread_command_t structure, but
-  // limited to the data's size because we can't rely on the structure having a
-  // valid size.
+  // limited to the data's size because we can't rely on the structure having
+  // a valid size.
   uint32_t command_size = yr_min(size, ((yr_thread_command_t*) data)->cmdsize);
 
   // command_size should be at least the size of yr_thread_command_t.
@@ -240,62 +235,71 @@ void macho_handle_unixthread(
 
   uint64_t address = 0;
 
-  switch (get_integer(object, "cputype"))
+  switch (yr_get_integer(object, "cputype"))
   {
   case CPU_TYPE_MC680X0:
   {
-    if (thread_state_size >= sizeof(yr_m68k_thread_state_t))
-      address = ((yr_m68k_thread_state_t*) thread_state)->pc;
+    if (thread_state_size < sizeof(yr_m68k_thread_state_t))
+      return;
+    address = ((yr_m68k_thread_state_t*) thread_state)->pc;
     break;
   }
   case CPU_TYPE_MC88000:
   {
-    if (thread_state_size >= sizeof(yr_m88k_thread_state_t))
-      address = ((yr_m88k_thread_state_t*) thread_state)->xip;
+    if (thread_state_size < sizeof(yr_m88k_thread_state_t))
+      return;
+    address = ((yr_m88k_thread_state_t*) thread_state)->xip;
     break;
   }
   case CPU_TYPE_SPARC:
   {
-    if (thread_state_size >= sizeof(yr_sparc_thread_state_t))
-      address = ((yr_sparc_thread_state_t*) thread_state)->pc;
+    if (thread_state_size < sizeof(yr_sparc_thread_state_t))
+      return;
+    address = ((yr_sparc_thread_state_t*) thread_state)->pc;
     break;
   }
   case CPU_TYPE_POWERPC:
   {
-    if (thread_state_size >= sizeof(yr_ppc_thread_state_t))
-      address = ((yr_ppc_thread_state_t*) thread_state)->srr0;
+    if (thread_state_size < sizeof(yr_ppc_thread_state_t))
+      return;
+    address = ((yr_ppc_thread_state_t*) thread_state)->srr0;
     break;
   }
   case CPU_TYPE_X86:
   {
-    if (thread_state_size >= sizeof(yr_x86_thread_state_t))
-      address = ((yr_x86_thread_state_t*) thread_state)->eip;
+    if (thread_state_size < sizeof(yr_x86_thread_state_t))
+      return;
+    address = ((yr_x86_thread_state_t*) thread_state)->eip;
     break;
   }
   case CPU_TYPE_ARM:
   {
-    if (thread_state_size >= sizeof(yr_arm_thread_state_t))
-      address = ((yr_arm_thread_state_t*) thread_state)->pc;
+    if (thread_state_size < sizeof(yr_arm_thread_state_t))
+      return;
+    address = ((yr_arm_thread_state_t*) thread_state)->pc;
     break;
   }
   case CPU_TYPE_X86_64:
   {
-    if (thread_state_size >= sizeof(yr_x86_thread_state64_t))
-      address = ((yr_x86_thread_state64_t*) thread_state)->rip;
+    if (thread_state_size < sizeof(yr_x86_thread_state64_t))
+      return;
+    address = ((yr_x86_thread_state64_t*) thread_state)->rip;
     is64 = true;
     break;
   }
   case CPU_TYPE_ARM64:
   {
-    if (thread_state_size >= sizeof(yr_arm_thread_state64_t))
-      address = ((yr_arm_thread_state64_t*) thread_state)->pc;
+    if (thread_state_size < sizeof(yr_arm_thread_state64_t))
+      return;
+    address = ((yr_arm_thread_state64_t*) thread_state)->pc;
     is64 = true;
     break;
   }
   case CPU_TYPE_POWERPC64:
   {
-    if (thread_state_size >= sizeof(yr_ppc_thread_state64_t))
-      address = ((yr_ppc_thread_state64_t*) thread_state)->srr0;
+    if (thread_state_size < sizeof(yr_ppc_thread_state64_t))
+      return;
+    address = ((yr_ppc_thread_state64_t*) thread_state)->srr0;
     is64 = true;
     break;
   }
@@ -314,14 +318,14 @@ void macho_handle_unixthread(
 
   if (context->flags & SCAN_FLAGS_PROCESS_MEMORY)
   {
-    set_integer(address, object, "entry_point");
+    yr_set_integer(base_address + address, object, "entry_point");
   }
   else
   {
     uint64_t offset = 0;
     if (macho_rva_to_offset(address, &offset, object))
     {
-      set_integer(offset, object, "entry_point");
+      yr_set_integer(offset, object, "entry_point");
     }
   }
 }
@@ -341,7 +345,7 @@ void macho_handle_main(
 
   memcpy(&ep_command, data, sizeof(yr_entry_point_command_t));
 
-  if (should_swap_bytes(get_integer(object, "magic")))
+  if (should_swap_bytes(yr_get_integer(object, "magic")))
     swap_entry_point_command(&ep_command);
 
   if (context->flags & SCAN_FLAGS_PROCESS_MEMORY)
@@ -349,14 +353,14 @@ void macho_handle_main(
     uint64_t address = 0;
     if (macho_offset_to_rva(ep_command.entryoff, &address, object))
     {
-      set_integer(address, object, "entry_point");
+      yr_set_integer(address, object, "entry_point");
     }
   }
   else
   {
-    set_integer(ep_command.entryoff, object, "entry_point");
+    yr_set_integer(ep_command.entryoff, object, "entry_point");
   }
-  set_integer(ep_command.stacksize, object, "stack_size");
+  yr_set_integer(ep_command.stacksize, object, "stack_size");
 }
 
 // Load segment and its sections.
@@ -374,22 +378,22 @@ void macho_handle_segment(
 
   memcpy(&sg, data, sizeof(yr_segment_command_32_t));
 
-  int should_swap = should_swap_bytes(get_integer(object, "magic"));
+  int should_swap = should_swap_bytes(yr_get_integer(object, "magic"));
 
   if (should_swap)
     swap_segment_command(&sg);
 
-  set_sized_string(
+  yr_set_sized_string(
       sg.segname, strnlen(sg.segname, 16), object, "segments[%i].segname", i);
 
-  set_integer(sg.vmaddr, object, "segments[%i].vmaddr", i);
-  set_integer(sg.vmsize, object, "segments[%i].vmsize", i);
-  set_integer(sg.fileoff, object, "segments[%i].fileoff", i);
-  set_integer(sg.filesize, object, "segments[%i].fsize", i);
-  set_integer(sg.maxprot, object, "segments[%i].maxprot", i);
-  set_integer(sg.initprot, object, "segments[%i].initprot", i);
-  set_integer(sg.nsects, object, "segments[%i].nsects", i);
-  set_integer(sg.flags, object, "segments[%i].flags", i);
+  yr_set_integer(sg.vmaddr, object, "segments[%i].vmaddr", i);
+  yr_set_integer(sg.vmsize, object, "segments[%i].vmsize", i);
+  yr_set_integer(sg.fileoff, object, "segments[%i].fileoff", i);
+  yr_set_integer(sg.filesize, object, "segments[%i].fsize", i);
+  yr_set_integer(sg.maxprot, object, "segments[%i].maxprot", i);
+  yr_set_integer(sg.initprot, object, "segments[%i].initprot", i);
+  yr_set_integer(sg.nsects, object, "segments[%i].nsects", i);
+  yr_set_integer(sg.flags, object, "segments[%i].flags", i);
 
   uint64_t parsed_size = sizeof(yr_segment_command_32_t);
 
@@ -411,7 +415,7 @@ void macho_handle_segment(
     if (should_swap)
       swap_section(&sec);
 
-    set_sized_string(
+    yr_set_sized_string(
         sec.segname,
         strnlen(sec.segname, 16),
         object,
@@ -419,7 +423,7 @@ void macho_handle_segment(
         i,
         j);
 
-    set_sized_string(
+    yr_set_sized_string(
         sec.sectname,
         strnlen(sec.sectname, 16),
         object,
@@ -427,24 +431,27 @@ void macho_handle_segment(
         i,
         j);
 
-    set_integer(sec.addr, object, "segments[%i].sections[%i].addr", i, j);
+    yr_set_integer(sec.addr, object, "segments[%i].sections[%i].addr", i, j);
 
-    set_integer(sec.size, object, "segments[%i].sections[%i].size", i, j);
+    yr_set_integer(sec.size, object, "segments[%i].sections[%i].size", i, j);
 
-    set_integer(sec.offset, object, "segments[%i].sections[%i].offset", i, j);
+    yr_set_integer(
+        sec.offset, object, "segments[%i].sections[%i].offset", i, j);
 
-    set_integer(sec.align, object, "segments[%i].sections[%i].align", i, j);
+    yr_set_integer(sec.align, object, "segments[%i].sections[%i].align", i, j);
 
-    set_integer(sec.reloff, object, "segments[%i].sections[%i].reloff", i, j);
+    yr_set_integer(
+        sec.reloff, object, "segments[%i].sections[%i].reloff", i, j);
 
-    set_integer(sec.nreloc, object, "segments[%i].sections[%i].nreloc", i, j);
+    yr_set_integer(
+        sec.nreloc, object, "segments[%i].sections[%i].nreloc", i, j);
 
-    set_integer(sec.flags, object, "segments[%i].sections[%i].flags", i, j);
+    yr_set_integer(sec.flags, object, "segments[%i].sections[%i].flags", i, j);
 
-    set_integer(
+    yr_set_integer(
         sec.reserved1, object, "segments[%i].sections[%i].reserved1", i, j);
 
-    set_integer(
+    yr_set_integer(
         sec.reserved2, object, "segments[%i].sections[%i].reserved2", i, j);
   }
 }
@@ -462,22 +469,22 @@ void macho_handle_segment_64(
 
   memcpy(&sg, data, sizeof(yr_segment_command_64_t));
 
-  int should_swap = should_swap_bytes(get_integer(object, "magic"));
+  int should_swap = should_swap_bytes(yr_get_integer(object, "magic"));
 
   if (should_swap)
     swap_segment_command_64(&sg);
 
-  set_sized_string(
+  yr_set_sized_string(
       sg.segname, strnlen(sg.segname, 16), object, "segments[%i].segname", i);
 
-  set_integer(sg.vmaddr, object, "segments[%i].vmaddr", i);
-  set_integer(sg.vmsize, object, "segments[%i].vmsize", i);
-  set_integer(sg.fileoff, object, "segments[%i].fileoff", i);
-  set_integer(sg.filesize, object, "segments[%i].fsize", i);
-  set_integer(sg.maxprot, object, "segments[%i].maxprot", i);
-  set_integer(sg.initprot, object, "segments[%i].initprot", i);
-  set_integer(sg.nsects, object, "segments[%i].nsects", i);
-  set_integer(sg.flags, object, "segments[%i].flags", i);
+  yr_set_integer(sg.vmaddr, object, "segments[%i].vmaddr", i);
+  yr_set_integer(sg.vmsize, object, "segments[%i].vmsize", i);
+  yr_set_integer(sg.fileoff, object, "segments[%i].fileoff", i);
+  yr_set_integer(sg.filesize, object, "segments[%i].fsize", i);
+  yr_set_integer(sg.maxprot, object, "segments[%i].maxprot", i);
+  yr_set_integer(sg.initprot, object, "segments[%i].initprot", i);
+  yr_set_integer(sg.nsects, object, "segments[%i].nsects", i);
+  yr_set_integer(sg.flags, object, "segments[%i].flags", i);
 
   uint64_t parsed_size = sizeof(yr_segment_command_64_t);
 
@@ -498,7 +505,7 @@ void macho_handle_segment_64(
     if (should_swap)
       swap_section_64(&sec);
 
-    set_sized_string(
+    yr_set_sized_string(
         sec.segname,
         strnlen(sec.segname, 16),
         object,
@@ -506,7 +513,7 @@ void macho_handle_segment_64(
         i,
         j);
 
-    set_sized_string(
+    yr_set_sized_string(
         sec.sectname,
         strnlen(sec.sectname, 16),
         object,
@@ -514,27 +521,30 @@ void macho_handle_segment_64(
         i,
         j);
 
-    set_integer(sec.addr, object, "segments[%i].sections[%i].addr", i, j);
+    yr_set_integer(sec.addr, object, "segments[%i].sections[%i].addr", i, j);
 
-    set_integer(sec.size, object, "segments[%i].sections[%i].size", i, j);
+    yr_set_integer(sec.size, object, "segments[%i].sections[%i].size", i, j);
 
-    set_integer(sec.offset, object, "segments[%i].sections[%i].offset", i, j);
+    yr_set_integer(
+        sec.offset, object, "segments[%i].sections[%i].offset", i, j);
 
-    set_integer(sec.align, object, "segments[%i].sections[%i].align", i, j);
+    yr_set_integer(sec.align, object, "segments[%i].sections[%i].align", i, j);
 
-    set_integer(sec.reloff, object, "segments[%i].sections[%i].reloff", i, j);
+    yr_set_integer(
+        sec.reloff, object, "segments[%i].sections[%i].reloff", i, j);
 
-    set_integer(sec.nreloc, object, "segments[%i].sections[%i].nreloc", i, j);
+    yr_set_integer(
+        sec.nreloc, object, "segments[%i].sections[%i].nreloc", i, j);
 
-    set_integer(sec.flags, object, "segments[%i].sections[%i].flags", i, j);
+    yr_set_integer(sec.flags, object, "segments[%i].sections[%i].flags", i, j);
 
-    set_integer(
+    yr_set_integer(
         sec.reserved1, object, "segments[%i].sections[%i].reserved1", i, j);
 
-    set_integer(
+    yr_set_integer(
         sec.reserved2, object, "segments[%i].sections[%i].reserved2", i, j);
 
-    set_integer(
+    yr_set_integer(
         sec.reserved3, object, "segments[%i].sections[%i].reserved3", i, j);
   }
 }
@@ -544,6 +554,7 @@ void macho_handle_segment_64(
 void macho_parse_file(
     const uint8_t* data,
     const uint64_t size,
+    const uint64_t base_address,
     YR_OBJECT* object,
     YR_SCAN_CONTEXT* context)
 {
@@ -552,32 +563,37 @@ void macho_parse_file(
   if (size < sizeof(yr_mach_header_64_t))
     return;
 
-  size_t header_size = macho_is_32(data) ? sizeof(yr_mach_header_32_t)
-                                         : sizeof(yr_mach_header_64_t);
-
-  // yr_mach_header_64_t is used for storing the header for both for 32-bits and
-  // 64-bits files. yr_mach_header_64_t is exactly like yr_mach_header_32_t
-  // but with an extra "reserved" field at the end.
+  // yr_mach_header_64_t is used for storing the header for both for 32-bits
+  // and 64-bits files. yr_mach_header_64_t is exactly like
+  // yr_mach_header_32_t but with an extra "reserved" field at the end.
   yr_mach_header_64_t header;
 
-  memcpy(&header, data, header_size);
+  memcpy(&header, data, sizeof(yr_mach_header_64_t));
+
+  // The magic number is always handled as big-endian. If the magic bytes are
+  // CA FE BA BE, then header.magic is 0xCAFEBABE.
+  header.magic = yr_be32toh(header.magic);
+
+  size_t header_size = (header.magic == MH_MAGIC || header.magic == MH_CIGAM)
+                           ? sizeof(yr_mach_header_32_t)
+                           : sizeof(yr_mach_header_64_t);
 
   int should_swap = should_swap_bytes(header.magic);
 
   if (should_swap)
     swap_mach_header(&header);
 
-  set_integer(header.magic, object, "magic");
-  set_integer(header.cputype, object, "cputype");
-  set_integer(header.cpusubtype, object, "cpusubtype");
-  set_integer(header.filetype, object, "filetype");
-  set_integer(header.ncmds, object, "ncmds");
-  set_integer(header.sizeofcmds, object, "sizeofcmds");
-  set_integer(header.flags, object, "flags");
+  yr_set_integer(header.magic, object, "magic");
+  yr_set_integer(header.cputype, object, "cputype");
+  yr_set_integer(header.cpusubtype, object, "cpusubtype");
+  yr_set_integer(header.filetype, object, "filetype");
+  yr_set_integer(header.ncmds, object, "ncmds");
+  yr_set_integer(header.sizeofcmds, object, "sizeofcmds");
+  yr_set_integer(header.flags, object, "flags");
 
   // The "reserved" field exists only in 64 bits files.
-  if (!macho_is_32(data))
-    set_integer(header.reserved, object, "reserved");
+  if (!macho_is_32(header.magic))
+    yr_set_integer(header.reserved, object, "reserved");
 
   // The first command parsing pass handles only segments.
   uint64_t seg_count = 0;
@@ -616,7 +632,7 @@ void macho_parse_file(
     parsed_size += command_struct.cmdsize;
   }
 
-  set_integer(seg_count, object, "number_of_segments");
+  yr_set_integer(seg_count, object, "number_of_segments");
 
   // The second command parsing pass handles others, who use segment count.
   parsed_size = header_size;
@@ -641,7 +657,8 @@ void macho_parse_file(
     switch (command_struct.cmd)
     {
     case LC_UNIXTHREAD:
-      macho_handle_unixthread(command, size - parsed_size, object, context);
+      macho_handle_unixthread(
+          command, size - parsed_size, base_address, object, context);
       break;
     case LC_MAIN:
       macho_handle_main(command, size - parsed_size, object, context);
@@ -661,10 +678,11 @@ void macho_load_fat_arch_header(
     uint32_t num,
     yr_fat_arch_64_t* arch)
 {
-  if (macho_fat_is_32(data))
+  if (macho_fat_is_32((uint32_t*) data))
   {
     yr_fat_arch_32_t* arch32 =
-        (yr_fat_arch_32_t*) (data + sizeof(yr_fat_header_t) + (num * sizeof(yr_fat_arch_32_t)));
+        (yr_fat_arch_32_t*) (data + sizeof(yr_fat_header_t) +
+                             (num * sizeof(yr_fat_arch_32_t)));
 
     arch->cputype = yr_be32toh(arch32->cputype);
     arch->cpusubtype = yr_be32toh(arch32->cpusubtype);
@@ -676,7 +694,8 @@ void macho_load_fat_arch_header(
   else
   {
     yr_fat_arch_64_t* arch64 =
-        (yr_fat_arch_64_t*) (data + sizeof(yr_fat_header_t) + (num * sizeof(yr_fat_arch_64_t)));
+        (yr_fat_arch_64_t*) (data + sizeof(yr_fat_header_t) +
+                             (num * sizeof(yr_fat_arch_64_t)));
 
     arch->cputype = yr_be32toh(arch64->cputype);
     arch->cpusubtype = yr_be32toh(arch64->cpusubtype);
@@ -690,12 +709,13 @@ void macho_load_fat_arch_header(
 void macho_parse_fat_file(
     const uint8_t* data,
     const uint64_t size,
+    const uint64_t base_address,
     YR_OBJECT* object,
     YR_SCAN_CONTEXT* context)
 {
   size_t fat_arch_sz = sizeof(yr_fat_arch_64_t);
 
-  if (macho_fat_is_32(data))
+  if (macho_fat_is_32((uint32_t*) data))
     fat_arch_sz = sizeof(yr_fat_arch_32_t);
 
   if (size < sizeof(yr_fat_header_t))
@@ -704,10 +724,10 @@ void macho_parse_fat_file(
   /* All data in Mach-O fat binary headers are in big-endian byte order. */
 
   const yr_fat_header_t* header = (yr_fat_header_t*) data;
-  set_integer(yr_be32toh(header->magic), object, "fat_magic");
+  yr_set_integer(yr_be32toh(header->magic), object, "fat_magic");
 
   uint32_t count = yr_be32toh(header->nfat_arch);
-  set_integer(count, object, "nfat_arch");
+  yr_set_integer(count, object, "nfat_arch");
 
   if (size < sizeof(yr_fat_header_t) + count * fat_arch_sz)
     return;
@@ -718,12 +738,12 @@ void macho_parse_fat_file(
   {
     macho_load_fat_arch_header(data, size, i, &arch);
 
-    set_integer(arch.cputype, object, "fat_arch[%i].cputype", i);
-    set_integer(arch.cpusubtype, object, "fat_arch[%i].cpusubtype", i);
-    set_integer(arch.offset, object, "fat_arch[%i].offset", i);
-    set_integer(arch.size, object, "fat_arch[%i].size", i);
-    set_integer(arch.align, object, "fat_arch[%i].align", i);
-    set_integer(arch.reserved, object, "fat_arch[%i].reserved", i);
+    yr_set_integer(arch.cputype, object, "fat_arch[%i].cputype", i);
+    yr_set_integer(arch.cpusubtype, object, "fat_arch[%i].cpusubtype", i);
+    yr_set_integer(arch.offset, object, "fat_arch[%i].offset", i);
+    yr_set_integer(arch.size, object, "fat_arch[%i].size", i);
+    yr_set_integer(arch.align, object, "fat_arch[%i].align", i);
+    yr_set_integer(arch.reserved, object, "fat_arch[%i].reserved", i);
 
     // Check for integer overflow.
     if (arch.offset + arch.size < arch.offset)
@@ -733,13 +753,14 @@ void macho_parse_fat_file(
       continue;
 
     // Force 'file' array entry creation.
-    set_integer(YR_UNDEFINED, object, "file[%i].magic", i);
+    yr_set_integer(YR_UNDEFINED, object, "file[%i].magic", i);
 
     // Get specific Mach-O file data.
     macho_parse_file(
         data + arch.offset,
         arch.size,
-        get_object(object, "file[%i]", i),
+        base_address,
+        yr_get_object(object, "file[%i]", i),
         context);
   }
 }
@@ -750,210 +771,216 @@ void macho_set_definitions(YR_OBJECT* object)
 {
   // Magic constants
 
-  set_integer(MH_MAGIC, object, "MH_MAGIC");
-  set_integer(MH_CIGAM, object, "MH_CIGAM");
-  set_integer(MH_MAGIC_64, object, "MH_MAGIC_64");
-  set_integer(MH_CIGAM_64, object, "MH_CIGAM_64");
+  yr_set_integer(MH_MAGIC, object, "MH_MAGIC");
+  yr_set_integer(MH_CIGAM, object, "MH_CIGAM");
+  yr_set_integer(MH_MAGIC_64, object, "MH_MAGIC_64");
+  yr_set_integer(MH_CIGAM_64, object, "MH_CIGAM_64");
 
   // Fat magic constants
 
-  set_integer(FAT_MAGIC, object, "FAT_MAGIC");
-  set_integer(FAT_CIGAM, object, "FAT_CIGAM");
-  set_integer(FAT_MAGIC_64, object, "FAT_MAGIC_64");
-  set_integer(FAT_CIGAM_64, object, "FAT_CIGAM_64");
+  yr_set_integer(FAT_MAGIC, object, "FAT_MAGIC");
+  yr_set_integer(FAT_CIGAM, object, "FAT_CIGAM");
+  yr_set_integer(FAT_MAGIC_64, object, "FAT_MAGIC_64");
+  yr_set_integer(FAT_CIGAM_64, object, "FAT_CIGAM_64");
 
   // 64-bit masks
 
-  set_integer(CPU_ARCH_ABI64, object, "CPU_ARCH_ABI64");
-  set_integer(CPU_SUBTYPE_LIB64, object, "CPU_SUBTYPE_LIB64");
+  yr_set_integer(CPU_ARCH_ABI64, object, "CPU_ARCH_ABI64");
+  yr_set_integer(CPU_SUBTYPE_LIB64, object, "CPU_SUBTYPE_LIB64");
 
   // CPU types
 
-  set_integer(CPU_TYPE_MC680X0, object, "CPU_TYPE_MC680X0");
-  set_integer(CPU_TYPE_X86, object, "CPU_TYPE_X86");
-  set_integer(CPU_TYPE_X86, object, "CPU_TYPE_I386");
-  set_integer(CPU_TYPE_X86_64, object, "CPU_TYPE_X86_64");
-  set_integer(CPU_TYPE_MIPS, object, "CPU_TYPE_MIPS");
-  set_integer(CPU_TYPE_MC98000, object, "CPU_TYPE_MC98000");
-  set_integer(CPU_TYPE_ARM, object, "CPU_TYPE_ARM");
-  set_integer(CPU_TYPE_ARM64, object, "CPU_TYPE_ARM64");
-  set_integer(CPU_TYPE_MC88000, object, "CPU_TYPE_MC88000");
-  set_integer(CPU_TYPE_SPARC, object, "CPU_TYPE_SPARC");
-  set_integer(CPU_TYPE_POWERPC, object, "CPU_TYPE_POWERPC");
-  set_integer(CPU_TYPE_POWERPC64, object, "CPU_TYPE_POWERPC64");
+  yr_set_integer(CPU_TYPE_MC680X0, object, "CPU_TYPE_MC680X0");
+  yr_set_integer(CPU_TYPE_X86, object, "CPU_TYPE_X86");
+  yr_set_integer(CPU_TYPE_X86, object, "CPU_TYPE_I386");
+  yr_set_integer(CPU_TYPE_X86_64, object, "CPU_TYPE_X86_64");
+  yr_set_integer(CPU_TYPE_MIPS, object, "CPU_TYPE_MIPS");
+  yr_set_integer(CPU_TYPE_MC98000, object, "CPU_TYPE_MC98000");
+  yr_set_integer(CPU_TYPE_ARM, object, "CPU_TYPE_ARM");
+  yr_set_integer(CPU_TYPE_ARM64, object, "CPU_TYPE_ARM64");
+  yr_set_integer(CPU_TYPE_MC88000, object, "CPU_TYPE_MC88000");
+  yr_set_integer(CPU_TYPE_SPARC, object, "CPU_TYPE_SPARC");
+  yr_set_integer(CPU_TYPE_POWERPC, object, "CPU_TYPE_POWERPC");
+  yr_set_integer(CPU_TYPE_POWERPC64, object, "CPU_TYPE_POWERPC64");
 
   // CPU sub-types
 
-  set_integer(
+  yr_set_integer(
       CPU_SUBTYPE_INTEL_MODEL_ALL, object, "CPU_SUBTYPE_INTEL_MODEL_ALL");
-  set_integer(CPU_SUBTYPE_386, object, "CPU_SUBTYPE_386");
-  set_integer(CPU_SUBTYPE_386, object, "CPU_SUBTYPE_I386_ALL");
-  set_integer(CPU_SUBTYPE_386, object, "CPU_SUBTYPE_X86_64_ALL");
-  set_integer(CPU_SUBTYPE_486, object, "CPU_SUBTYPE_486");
-  set_integer(CPU_SUBTYPE_486SX, object, "CPU_SUBTYPE_486SX");
-  set_integer(CPU_SUBTYPE_586, object, "CPU_SUBTYPE_586");
-  set_integer(CPU_SUBTYPE_PENT, object, "CPU_SUBTYPE_PENT");
-  set_integer(CPU_SUBTYPE_PENTPRO, object, "CPU_SUBTYPE_PENTPRO");
-  set_integer(CPU_SUBTYPE_PENTII_M3, object, "CPU_SUBTYPE_PENTII_M3");
-  set_integer(CPU_SUBTYPE_PENTII_M5, object, "CPU_SUBTYPE_PENTII_M5");
-  set_integer(CPU_SUBTYPE_CELERON, object, "CPU_SUBTYPE_CELERON");
-  set_integer(CPU_SUBTYPE_CELERON_MOBILE, object, "CPU_SUBTYPE_CELERON_MOBILE");
-  set_integer(CPU_SUBTYPE_PENTIUM_3, object, "CPU_SUBTYPE_PENTIUM_3");
-  set_integer(CPU_SUBTYPE_PENTIUM_3_M, object, "CPU_SUBTYPE_PENTIUM_3_M");
-  set_integer(CPU_SUBTYPE_PENTIUM_3_XEON, object, "CPU_SUBTYPE_PENTIUM_3_XEON");
-  set_integer(CPU_SUBTYPE_PENTIUM_M, object, "CPU_SUBTYPE_PENTIUM_M");
-  set_integer(CPU_SUBTYPE_PENTIUM_4, object, "CPU_SUBTYPE_PENTIUM_4");
-  set_integer(CPU_SUBTYPE_PENTIUM_4_M, object, "CPU_SUBTYPE_PENTIUM_4_M");
-  set_integer(CPU_SUBTYPE_ITANIUM, object, "CPU_SUBTYPE_ITANIUM");
-  set_integer(CPU_SUBTYPE_ITANIUM_2, object, "CPU_SUBTYPE_ITANIUM_2");
-  set_integer(CPU_SUBTYPE_XEON, object, "CPU_SUBTYPE_XEON");
-  set_integer(CPU_SUBTYPE_XEON_MP, object, "CPU_SUBTYPE_XEON_MP");
-  set_integer(CPU_SUBTYPE_ARM_ALL, object, "CPU_SUBTYPE_ARM_ALL");
-  set_integer(CPU_SUBTYPE_ARM_V4T, object, "CPU_SUBTYPE_ARM_V4T");
-  set_integer(CPU_SUBTYPE_ARM_V6, object, "CPU_SUBTYPE_ARM_V6");
-  set_integer(CPU_SUBTYPE_ARM_V5, object, "CPU_SUBTYPE_ARM_V5");
-  set_integer(CPU_SUBTYPE_ARM_V5TEJ, object, "CPU_SUBTYPE_ARM_V5TEJ");
-  set_integer(CPU_SUBTYPE_ARM_XSCALE, object, "CPU_SUBTYPE_ARM_XSCALE");
-  set_integer(CPU_SUBTYPE_ARM_V7, object, "CPU_SUBTYPE_ARM_V7");
-  set_integer(CPU_SUBTYPE_ARM_V7F, object, "CPU_SUBTYPE_ARM_V7F");
-  set_integer(CPU_SUBTYPE_ARM_V7S, object, "CPU_SUBTYPE_ARM_V7S");
-  set_integer(CPU_SUBTYPE_ARM_V7K, object, "CPU_SUBTYPE_ARM_V7K");
-  set_integer(CPU_SUBTYPE_ARM_V6M, object, "CPU_SUBTYPE_ARM_V6M");
-  set_integer(CPU_SUBTYPE_ARM_V7M, object, "CPU_SUBTYPE_ARM_V7M");
-  set_integer(CPU_SUBTYPE_ARM_V7EM, object, "CPU_SUBTYPE_ARM_V7EM");
-  set_integer(CPU_SUBTYPE_ARM64_ALL, object, "CPU_SUBTYPE_ARM64_ALL");
-  set_integer(CPU_SUBTYPE_SPARC_ALL, object, "CPU_SUBTYPE_SPARC_ALL");
-  set_integer(CPU_SUBTYPE_POWERPC_ALL, object, "CPU_SUBTYPE_POWERPC_ALL");
-  set_integer(CPU_SUBTYPE_MC980000_ALL, object, "CPU_SUBTYPE_MC980000_ALL");
-  set_integer(CPU_SUBTYPE_POWERPC_601, object, "CPU_SUBTYPE_POWERPC_601");
-  set_integer(CPU_SUBTYPE_MC98601, object, "CPU_SUBTYPE_MC98601");
-  set_integer(CPU_SUBTYPE_POWERPC_602, object, "CPU_SUBTYPE_POWERPC_602");
-  set_integer(CPU_SUBTYPE_POWERPC_603, object, "CPU_SUBTYPE_POWERPC_603");
-  set_integer(CPU_SUBTYPE_POWERPC_603e, object, "CPU_SUBTYPE_POWERPC_603e");
-  set_integer(CPU_SUBTYPE_POWERPC_603ev, object, "CPU_SUBTYPE_POWERPC_603ev");
-  set_integer(CPU_SUBTYPE_POWERPC_604, object, "CPU_SUBTYPE_POWERPC_604");
-  set_integer(CPU_SUBTYPE_POWERPC_604e, object, "CPU_SUBTYPE_POWERPC_604e");
-  set_integer(CPU_SUBTYPE_POWERPC_620, object, "CPU_SUBTYPE_POWERPC_620");
-  set_integer(CPU_SUBTYPE_POWERPC_750, object, "CPU_SUBTYPE_POWERPC_750");
-  set_integer(CPU_SUBTYPE_POWERPC_7400, object, "CPU_SUBTYPE_POWERPC_7400");
-  set_integer(CPU_SUBTYPE_POWERPC_7450, object, "CPU_SUBTYPE_POWERPC_7450");
-  set_integer(CPU_SUBTYPE_POWERPC_970, object, "CPU_SUBTYPE_POWERPC_970");
+  yr_set_integer(CPU_SUBTYPE_386, object, "CPU_SUBTYPE_386");
+  yr_set_integer(CPU_SUBTYPE_386, object, "CPU_SUBTYPE_I386_ALL");
+  yr_set_integer(CPU_SUBTYPE_386, object, "CPU_SUBTYPE_X86_64_ALL");
+  yr_set_integer(CPU_SUBTYPE_486, object, "CPU_SUBTYPE_486");
+  yr_set_integer(CPU_SUBTYPE_486SX, object, "CPU_SUBTYPE_486SX");
+  yr_set_integer(CPU_SUBTYPE_586, object, "CPU_SUBTYPE_586");
+  yr_set_integer(CPU_SUBTYPE_PENT, object, "CPU_SUBTYPE_PENT");
+  yr_set_integer(CPU_SUBTYPE_PENTPRO, object, "CPU_SUBTYPE_PENTPRO");
+  yr_set_integer(CPU_SUBTYPE_PENTII_M3, object, "CPU_SUBTYPE_PENTII_M3");
+  yr_set_integer(CPU_SUBTYPE_PENTII_M5, object, "CPU_SUBTYPE_PENTII_M5");
+  yr_set_integer(CPU_SUBTYPE_CELERON, object, "CPU_SUBTYPE_CELERON");
+  yr_set_integer(
+      CPU_SUBTYPE_CELERON_MOBILE, object, "CPU_SUBTYPE_CELERON_MOBILE");
+  yr_set_integer(CPU_SUBTYPE_PENTIUM_3, object, "CPU_SUBTYPE_PENTIUM_3");
+  yr_set_integer(CPU_SUBTYPE_PENTIUM_3_M, object, "CPU_SUBTYPE_PENTIUM_3_M");
+  yr_set_integer(
+      CPU_SUBTYPE_PENTIUM_3_XEON, object, "CPU_SUBTYPE_PENTIUM_3_XEON");
+  yr_set_integer(CPU_SUBTYPE_PENTIUM_M, object, "CPU_SUBTYPE_PENTIUM_M");
+  yr_set_integer(CPU_SUBTYPE_PENTIUM_4, object, "CPU_SUBTYPE_PENTIUM_4");
+  yr_set_integer(CPU_SUBTYPE_PENTIUM_4_M, object, "CPU_SUBTYPE_PENTIUM_4_M");
+  yr_set_integer(CPU_SUBTYPE_ITANIUM, object, "CPU_SUBTYPE_ITANIUM");
+  yr_set_integer(CPU_SUBTYPE_ITANIUM_2, object, "CPU_SUBTYPE_ITANIUM_2");
+  yr_set_integer(CPU_SUBTYPE_XEON, object, "CPU_SUBTYPE_XEON");
+  yr_set_integer(CPU_SUBTYPE_XEON_MP, object, "CPU_SUBTYPE_XEON_MP");
+  yr_set_integer(CPU_SUBTYPE_ARM_ALL, object, "CPU_SUBTYPE_ARM_ALL");
+  yr_set_integer(CPU_SUBTYPE_ARM_V4T, object, "CPU_SUBTYPE_ARM_V4T");
+  yr_set_integer(CPU_SUBTYPE_ARM_V6, object, "CPU_SUBTYPE_ARM_V6");
+  yr_set_integer(CPU_SUBTYPE_ARM_V5, object, "CPU_SUBTYPE_ARM_V5");
+  yr_set_integer(CPU_SUBTYPE_ARM_V5TEJ, object, "CPU_SUBTYPE_ARM_V5TEJ");
+  yr_set_integer(CPU_SUBTYPE_ARM_XSCALE, object, "CPU_SUBTYPE_ARM_XSCALE");
+  yr_set_integer(CPU_SUBTYPE_ARM_V7, object, "CPU_SUBTYPE_ARM_V7");
+  yr_set_integer(CPU_SUBTYPE_ARM_V7F, object, "CPU_SUBTYPE_ARM_V7F");
+  yr_set_integer(CPU_SUBTYPE_ARM_V7S, object, "CPU_SUBTYPE_ARM_V7S");
+  yr_set_integer(CPU_SUBTYPE_ARM_V7K, object, "CPU_SUBTYPE_ARM_V7K");
+  yr_set_integer(CPU_SUBTYPE_ARM_V6M, object, "CPU_SUBTYPE_ARM_V6M");
+  yr_set_integer(CPU_SUBTYPE_ARM_V7M, object, "CPU_SUBTYPE_ARM_V7M");
+  yr_set_integer(CPU_SUBTYPE_ARM_V7EM, object, "CPU_SUBTYPE_ARM_V7EM");
+  yr_set_integer(CPU_SUBTYPE_ARM64_ALL, object, "CPU_SUBTYPE_ARM64_ALL");
+  yr_set_integer(CPU_SUBTYPE_SPARC_ALL, object, "CPU_SUBTYPE_SPARC_ALL");
+  yr_set_integer(CPU_SUBTYPE_POWERPC_ALL, object, "CPU_SUBTYPE_POWERPC_ALL");
+  yr_set_integer(CPU_SUBTYPE_MC980000_ALL, object, "CPU_SUBTYPE_MC980000_ALL");
+  yr_set_integer(CPU_SUBTYPE_POWERPC_601, object, "CPU_SUBTYPE_POWERPC_601");
+  yr_set_integer(CPU_SUBTYPE_MC98601, object, "CPU_SUBTYPE_MC98601");
+  yr_set_integer(CPU_SUBTYPE_POWERPC_602, object, "CPU_SUBTYPE_POWERPC_602");
+  yr_set_integer(CPU_SUBTYPE_POWERPC_603, object, "CPU_SUBTYPE_POWERPC_603");
+  yr_set_integer(CPU_SUBTYPE_POWERPC_603e, object, "CPU_SUBTYPE_POWERPC_603e");
+  yr_set_integer(
+      CPU_SUBTYPE_POWERPC_603ev, object, "CPU_SUBTYPE_POWERPC_603ev");
+  yr_set_integer(CPU_SUBTYPE_POWERPC_604, object, "CPU_SUBTYPE_POWERPC_604");
+  yr_set_integer(CPU_SUBTYPE_POWERPC_604e, object, "CPU_SUBTYPE_POWERPC_604e");
+  yr_set_integer(CPU_SUBTYPE_POWERPC_620, object, "CPU_SUBTYPE_POWERPC_620");
+  yr_set_integer(CPU_SUBTYPE_POWERPC_750, object, "CPU_SUBTYPE_POWERPC_750");
+  yr_set_integer(CPU_SUBTYPE_POWERPC_7400, object, "CPU_SUBTYPE_POWERPC_7400");
+  yr_set_integer(CPU_SUBTYPE_POWERPC_7450, object, "CPU_SUBTYPE_POWERPC_7450");
+  yr_set_integer(CPU_SUBTYPE_POWERPC_970, object, "CPU_SUBTYPE_POWERPC_970");
 
   // File types
 
-  set_integer(MH_OBJECT, object, "MH_OBJECT");
-  set_integer(MH_EXECUTE, object, "MH_EXECUTE");
-  set_integer(MH_FVMLIB, object, "MH_FVMLIB");
-  set_integer(MH_CORE, object, "MH_CORE");
-  set_integer(MH_PRELOAD, object, "MH_PRELOAD");
-  set_integer(MH_DYLIB, object, "MH_DYLIB");
-  set_integer(MH_DYLINKER, object, "MH_DYLINKER");
-  set_integer(MH_BUNDLE, object, "MH_BUNDLE");
-  set_integer(MH_DYLIB_STUB, object, "MH_DYLIB_STUB");
-  set_integer(MH_DSYM, object, "MH_DSYM");
-  set_integer(MH_KEXT_BUNDLE, object, "MH_KEXT_BUNDLE");
+  yr_set_integer(MH_OBJECT, object, "MH_OBJECT");
+  yr_set_integer(MH_EXECUTE, object, "MH_EXECUTE");
+  yr_set_integer(MH_FVMLIB, object, "MH_FVMLIB");
+  yr_set_integer(MH_CORE, object, "MH_CORE");
+  yr_set_integer(MH_PRELOAD, object, "MH_PRELOAD");
+  yr_set_integer(MH_DYLIB, object, "MH_DYLIB");
+  yr_set_integer(MH_DYLINKER, object, "MH_DYLINKER");
+  yr_set_integer(MH_BUNDLE, object, "MH_BUNDLE");
+  yr_set_integer(MH_DYLIB_STUB, object, "MH_DYLIB_STUB");
+  yr_set_integer(MH_DSYM, object, "MH_DSYM");
+  yr_set_integer(MH_KEXT_BUNDLE, object, "MH_KEXT_BUNDLE");
 
   // Header flags
 
-  set_integer(MH_NOUNDEFS, object, "MH_NOUNDEFS");
-  set_integer(MH_INCRLINK, object, "MH_INCRLINK");
-  set_integer(MH_DYLDLINK, object, "MH_DYLDLINK");
-  set_integer(MH_BINDATLOAD, object, "MH_BINDATLOAD");
-  set_integer(MH_PREBOUND, object, "MH_PREBOUND");
-  set_integer(MH_SPLIT_SEGS, object, "MH_SPLIT_SEGS");
-  set_integer(MH_LAZY_INIT, object, "MH_LAZY_INIT");
-  set_integer(MH_TWOLEVEL, object, "MH_TWOLEVEL");
-  set_integer(MH_FORCE_FLAT, object, "MH_FORCE_FLAT");
-  set_integer(MH_NOMULTIDEFS, object, "MH_NOMULTIDEFS");
-  set_integer(MH_NOFIXPREBINDING, object, "MH_NOFIXPREBINDING");
-  set_integer(MH_PREBINDABLE, object, "MH_PREBINDABLE");
-  set_integer(MH_ALLMODSBOUND, object, "MH_ALLMODSBOUND");
-  set_integer(MH_SUBSECTIONS_VIA_SYMBOLS, object, "MH_SUBSECTIONS_VIA_SYMBOLS");
-  set_integer(MH_CANONICAL, object, "MH_CANONICAL");
-  set_integer(MH_WEAK_DEFINES, object, "MH_WEAK_DEFINES");
-  set_integer(MH_BINDS_TO_WEAK, object, "MH_BINDS_TO_WEAK");
-  set_integer(MH_ALLOW_STACK_EXECUTION, object, "MH_ALLOW_STACK_EXECUTION");
-  set_integer(MH_ROOT_SAFE, object, "MH_ROOT_SAFE");
-  set_integer(MH_SETUID_SAFE, object, "MH_SETUID_SAFE");
-  set_integer(MH_NO_REEXPORTED_DYLIBS, object, "MH_NO_REEXPORTED_DYLIBS");
-  set_integer(MH_PIE, object, "MH_PIE");
-  set_integer(MH_DEAD_STRIPPABLE_DYLIB, object, "MH_DEAD_STRIPPABLE_DYLIB");
-  set_integer(MH_HAS_TLV_DESCRIPTORS, object, "MH_HAS_TLV_DESCRIPTORS");
-  set_integer(MH_NO_HEAP_EXECUTION, object, "MH_NO_HEAP_EXECUTION");
-  set_integer(MH_APP_EXTENSION_SAFE, object, "MH_APP_EXTENSION_SAFE");
+  yr_set_integer(MH_NOUNDEFS, object, "MH_NOUNDEFS");
+  yr_set_integer(MH_INCRLINK, object, "MH_INCRLINK");
+  yr_set_integer(MH_DYLDLINK, object, "MH_DYLDLINK");
+  yr_set_integer(MH_BINDATLOAD, object, "MH_BINDATLOAD");
+  yr_set_integer(MH_PREBOUND, object, "MH_PREBOUND");
+  yr_set_integer(MH_SPLIT_SEGS, object, "MH_SPLIT_SEGS");
+  yr_set_integer(MH_LAZY_INIT, object, "MH_LAZY_INIT");
+  yr_set_integer(MH_TWOLEVEL, object, "MH_TWOLEVEL");
+  yr_set_integer(MH_FORCE_FLAT, object, "MH_FORCE_FLAT");
+  yr_set_integer(MH_NOMULTIDEFS, object, "MH_NOMULTIDEFS");
+  yr_set_integer(MH_NOFIXPREBINDING, object, "MH_NOFIXPREBINDING");
+  yr_set_integer(MH_PREBINDABLE, object, "MH_PREBINDABLE");
+  yr_set_integer(MH_ALLMODSBOUND, object, "MH_ALLMODSBOUND");
+  yr_set_integer(
+      MH_SUBSECTIONS_VIA_SYMBOLS, object, "MH_SUBSECTIONS_VIA_SYMBOLS");
+  yr_set_integer(MH_CANONICAL, object, "MH_CANONICAL");
+  yr_set_integer(MH_WEAK_DEFINES, object, "MH_WEAK_DEFINES");
+  yr_set_integer(MH_BINDS_TO_WEAK, object, "MH_BINDS_TO_WEAK");
+  yr_set_integer(MH_ALLOW_STACK_EXECUTION, object, "MH_ALLOW_STACK_EXECUTION");
+  yr_set_integer(MH_ROOT_SAFE, object, "MH_ROOT_SAFE");
+  yr_set_integer(MH_SETUID_SAFE, object, "MH_SETUID_SAFE");
+  yr_set_integer(MH_NO_REEXPORTED_DYLIBS, object, "MH_NO_REEXPORTED_DYLIBS");
+  yr_set_integer(MH_PIE, object, "MH_PIE");
+  yr_set_integer(MH_DEAD_STRIPPABLE_DYLIB, object, "MH_DEAD_STRIPPABLE_DYLIB");
+  yr_set_integer(MH_HAS_TLV_DESCRIPTORS, object, "MH_HAS_TLV_DESCRIPTORS");
+  yr_set_integer(MH_NO_HEAP_EXECUTION, object, "MH_NO_HEAP_EXECUTION");
+  yr_set_integer(MH_APP_EXTENSION_SAFE, object, "MH_APP_EXTENSION_SAFE");
 
   // Segment flags masks
 
-  set_integer(SG_HIGHVM, object, "SG_HIGHVM");
-  set_integer(SG_FVMLIB, object, "SG_FVMLIB");
-  set_integer(SG_NORELOC, object, "SG_NORELOC");
-  set_integer(SG_PROTECTED_VERSION_1, object, "SG_PROTECTED_VERSION_1");
+  yr_set_integer(SG_HIGHVM, object, "SG_HIGHVM");
+  yr_set_integer(SG_FVMLIB, object, "SG_FVMLIB");
+  yr_set_integer(SG_NORELOC, object, "SG_NORELOC");
+  yr_set_integer(SG_PROTECTED_VERSION_1, object, "SG_PROTECTED_VERSION_1");
 
   // Section flags masks
 
-  set_integer(SECTION_TYPE, object, "SECTION_TYPE");
-  set_integer(SECTION_ATTRIBUTES, object, "SECTION_ATTRIBUTES");
+  yr_set_integer(SECTION_TYPE, object, "SECTION_TYPE");
+  yr_set_integer(SECTION_ATTRIBUTES, object, "SECTION_ATTRIBUTES");
 
   // Section types
 
-  set_integer(S_REGULAR, object, "S_REGULAR");
-  set_integer(S_ZEROFILL, object, "S_ZEROFILL");
-  set_integer(S_CSTRING_LITERALS, object, "S_CSTRING_LITERALS");
-  set_integer(S_4BYTE_LITERALS, object, "S_4BYTE_LITERALS");
-  set_integer(S_8BYTE_LITERALS, object, "S_8BYTE_LITERALS");
-  set_integer(S_NON_LAZY_SYMBOL_POINTERS, object, "S_NON_LAZY_SYMBOL_POINTERS");
-  set_integer(S_LAZY_SYMBOL_POINTERS, object, "S_LAZY_SYMBOL_POINTERS");
-  set_integer(S_LITERAL_POINTERS, object, "S_LITERAL_POINTERS");
-  set_integer(S_SYMBOL_STUBS, object, "S_SYMBOL_STUBS");
-  set_integer(S_MOD_INIT_FUNC_POINTERS, object, "S_MOD_INIT_FUNC_POINTERS");
-  set_integer(S_MOD_TERM_FUNC_POINTERS, object, "S_MOD_TERM_FUNC_POINTERS");
-  set_integer(S_COALESCED, object, "S_COALESCED");
-  set_integer(S_GB_ZEROFILL, object, "S_GB_ZEROFILL");
-  set_integer(S_INTERPOSING, object, "S_INTERPOSING");
-  set_integer(S_16BYTE_LITERALS, object, "S_16BYTE_LITERALS");
-  set_integer(S_DTRACE_DOF, object, "S_DTRACE_DOF");
-  set_integer(
+  yr_set_integer(S_REGULAR, object, "S_REGULAR");
+  yr_set_integer(S_ZEROFILL, object, "S_ZEROFILL");
+  yr_set_integer(S_CSTRING_LITERALS, object, "S_CSTRING_LITERALS");
+  yr_set_integer(S_4BYTE_LITERALS, object, "S_4BYTE_LITERALS");
+  yr_set_integer(S_8BYTE_LITERALS, object, "S_8BYTE_LITERALS");
+  yr_set_integer(
+      S_NON_LAZY_SYMBOL_POINTERS, object, "S_NON_LAZY_SYMBOL_POINTERS");
+  yr_set_integer(S_LAZY_SYMBOL_POINTERS, object, "S_LAZY_SYMBOL_POINTERS");
+  yr_set_integer(S_LITERAL_POINTERS, object, "S_LITERAL_POINTERS");
+  yr_set_integer(S_SYMBOL_STUBS, object, "S_SYMBOL_STUBS");
+  yr_set_integer(S_MOD_INIT_FUNC_POINTERS, object, "S_MOD_INIT_FUNC_POINTERS");
+  yr_set_integer(S_MOD_TERM_FUNC_POINTERS, object, "S_MOD_TERM_FUNC_POINTERS");
+  yr_set_integer(S_COALESCED, object, "S_COALESCED");
+  yr_set_integer(S_GB_ZEROFILL, object, "S_GB_ZEROFILL");
+  yr_set_integer(S_INTERPOSING, object, "S_INTERPOSING");
+  yr_set_integer(S_16BYTE_LITERALS, object, "S_16BYTE_LITERALS");
+  yr_set_integer(S_DTRACE_DOF, object, "S_DTRACE_DOF");
+  yr_set_integer(
       S_LAZY_DYLIB_SYMBOL_POINTERS, object, "S_LAZY_DYLIB_SYMBOL_POINTERS");
-  set_integer(S_THREAD_LOCAL_REGULAR, object, "S_THREAD_LOCAL_REGULAR");
-  set_integer(S_THREAD_LOCAL_ZEROFILL, object, "S_THREAD_LOCAL_ZEROFILL");
-  set_integer(S_THREAD_LOCAL_VARIABLES, object, "S_THREAD_LOCAL_VARIABLES");
-  set_integer(
+  yr_set_integer(S_THREAD_LOCAL_REGULAR, object, "S_THREAD_LOCAL_REGULAR");
+  yr_set_integer(S_THREAD_LOCAL_ZEROFILL, object, "S_THREAD_LOCAL_ZEROFILL");
+  yr_set_integer(S_THREAD_LOCAL_VARIABLES, object, "S_THREAD_LOCAL_VARIABLES");
+  yr_set_integer(
       S_THREAD_LOCAL_VARIABLE_POINTERS,
       object,
       "S_THREAD_LOCAL_VARIABLE_POINTERS");
-  set_integer(
+  yr_set_integer(
       S_THREAD_LOCAL_INIT_FUNCTION_POINTERS,
       object,
       "S_THREAD_LOCAL_INIT_FUNCTION_POINTERS");
 
   // Section attributes
 
-  set_integer(S_ATTR_PURE_INSTRUCTIONS, object, "S_ATTR_PURE_INSTRUCTIONS");
-  set_integer(S_ATTR_NO_TOC, object, "S_ATTR_NO_TOC");
-  set_integer(S_ATTR_STRIP_STATIC_SYMS, object, "S_ATTR_STRIP_STATIC_SYMS");
-  set_integer(S_ATTR_NO_DEAD_STRIP, object, "S_ATTR_NO_DEAD_STRIP");
-  set_integer(S_ATTR_LIVE_SUPPORT, object, "S_ATTR_LIVE_SUPPORT");
-  set_integer(S_ATTR_SELF_MODIFYING_CODE, object, "S_ATTR_SELF_MODIFYING_CODE");
-  set_integer(S_ATTR_DEBUG, object, "S_ATTR_DEBUG");
-  set_integer(S_ATTR_SOME_INSTRUCTIONS, object, "S_ATTR_SOME_INSTRUCTIONS");
-  set_integer(S_ATTR_EXT_RELOC, object, "S_ATTR_EXT_RELOC");
-  set_integer(S_ATTR_LOC_RELOC, object, "S_ATTR_LOC_RELOC");
+  yr_set_integer(S_ATTR_PURE_INSTRUCTIONS, object, "S_ATTR_PURE_INSTRUCTIONS");
+  yr_set_integer(S_ATTR_NO_TOC, object, "S_ATTR_NO_TOC");
+  yr_set_integer(S_ATTR_STRIP_STATIC_SYMS, object, "S_ATTR_STRIP_STATIC_SYMS");
+  yr_set_integer(S_ATTR_NO_DEAD_STRIP, object, "S_ATTR_NO_DEAD_STRIP");
+  yr_set_integer(S_ATTR_LIVE_SUPPORT, object, "S_ATTR_LIVE_SUPPORT");
+  yr_set_integer(
+      S_ATTR_SELF_MODIFYING_CODE, object, "S_ATTR_SELF_MODIFYING_CODE");
+  yr_set_integer(S_ATTR_DEBUG, object, "S_ATTR_DEBUG");
+  yr_set_integer(S_ATTR_SOME_INSTRUCTIONS, object, "S_ATTR_SOME_INSTRUCTIONS");
+  yr_set_integer(S_ATTR_EXT_RELOC, object, "S_ATTR_EXT_RELOC");
+  yr_set_integer(S_ATTR_LOC_RELOC, object, "S_ATTR_LOC_RELOC");
 }
 
 // Get Mach-O file index in fat file by cputype field.
 
 define_function(file_index_type)
 {
-  YR_OBJECT* module = module();
+  YR_OBJECT* module = yr_module();
   int64_t type_arg = integer_argument(1);
 
-  uint64_t nfat = get_integer(module, "nfat_arch");
-  if (is_undefined(module, "nfat_arch"))
+  uint64_t nfat = yr_get_integer(module, "nfat_arch");
+  if (yr_is_undefined(module, "nfat_arch"))
     return_integer(YR_UNDEFINED);
 
   for (int i = 0; i < nfat; i++)
   {
-    int64_t type = get_integer(module, "file[%i].cputype", i);
+    int64_t type = yr_get_integer(module, "file[%i].cputype", i);
     if (type == type_arg)
     {
       return_integer(i);
@@ -966,18 +993,18 @@ define_function(file_index_type)
 
 define_function(file_index_subtype)
 {
-  YR_OBJECT* module = module();
+  YR_OBJECT* module = yr_module();
   int64_t type_arg = integer_argument(1);
   int64_t subtype_arg = integer_argument(2);
-  uint64_t nfat = get_integer(module, "nfat_arch");
+  uint64_t nfat = yr_get_integer(module, "nfat_arch");
 
-  if (is_undefined(module, "nfat_arch"))
+  if (yr_is_undefined(module, "nfat_arch"))
     return_integer(YR_UNDEFINED);
 
   for (int i = 0; i < nfat; i++)
   {
-    int64_t type = get_integer(module, "file[%i].cputype", i);
-    int64_t subtype = get_integer(module, "file[%i].cpusubtype", i);
+    int64_t type = yr_get_integer(module, "file[%i].cputype", i);
+    int64_t subtype = yr_get_integer(module, "file[%i].cpusubtype", i);
 
     if (type == type_arg && subtype == subtype_arg)
     {
@@ -992,20 +1019,20 @@ define_function(file_index_subtype)
 
 define_function(ep_for_arch_type)
 {
-  YR_OBJECT* module = module();
+  YR_OBJECT* module = yr_module();
   int64_t type_arg = integer_argument(1);
-  uint64_t nfat = get_integer(module, "nfat_arch");
+  uint64_t nfat = yr_get_integer(module, "nfat_arch");
 
-  if (is_undefined(module, "nfat_arch"))
+  if (yr_is_undefined(module, "nfat_arch"))
     return_integer(YR_UNDEFINED);
 
   for (int i = 0; i < nfat; i++)
   {
-    int64_t type = get_integer(module, "fat_arch[%i].cputype", i);
+    int64_t type = yr_get_integer(module, "fat_arch[%i].cputype", i);
     if (type == type_arg)
     {
-      uint64_t file_offset = get_integer(module, "fat_arch[%i].offset", i);
-      uint64_t entry_point = get_integer(module, "file[%i].entry_point", i);
+      uint64_t file_offset = yr_get_integer(module, "fat_arch[%i].offset", i);
+      uint64_t entry_point = yr_get_integer(module, "file[%i].entry_point", i);
       return_integer(file_offset + entry_point);
     }
   }
@@ -1017,24 +1044,32 @@ define_function(ep_for_arch_type)
 
 define_function(ep_for_arch_subtype)
 {
-  YR_OBJECT* module = module();
+  YR_OBJECT* module = yr_module();
   int64_t type_arg = integer_argument(1);
   int64_t subtype_arg = integer_argument(2);
-  uint64_t nfat = get_integer(module, "nfat_arch");
+  uint64_t nfat = yr_get_integer(module, "nfat_arch");
 
-  if (is_undefined(module, "nfat_arch"))
+  if (yr_is_undefined(module, "nfat_arch"))
     return_integer(YR_UNDEFINED);
 
   for (int i = 0; i < nfat; i++)
   {
-    int64_t type = get_integer(module, "fat_arch[%i].cputype", i);
-    int64_t subtype = get_integer(module, "fat_arch[%i].cpusubtype", i);
+    int64_t type = yr_get_integer(module, "fat_arch[%i].cputype", i);
+    int64_t subtype = yr_get_integer(module, "fat_arch[%i].cpusubtype", i);
 
     if (type == type_arg && subtype == subtype_arg)
     {
-      uint64_t file_offset = get_integer(module, "fat_arch[%i].offset", i);
-      uint64_t entry_point = get_integer(module, "file[%i].entry_point", i);
-      return_integer(file_offset + entry_point);
+      uint64_t entry_point = yr_get_integer(module, "file[%i].entry_point", i);
+      uint64_t file_offset = yr_get_integer(module, "fat_arch[%i].offset", i);
+
+      if (entry_point == YR_UNDEFINED)
+      {
+        return_integer(YR_UNDEFINED);
+      }
+      else
+      {
+        return_integer(file_offset + entry_point);
+      }
     }
   }
 
@@ -1345,7 +1380,7 @@ int module_load(
 
   foreach_memory_block(iterator, block)
   {
-    const uint8_t* block_data = block->fetch_data(block);
+    const uint8_t* block_data = yr_fetch_block_data(block);
 
     if (block_data == NULL || block->size < 4)
       continue;
@@ -1353,14 +1388,16 @@ int module_load(
     // Parse Mach-O binary.
     if (is_macho_file_block((uint32_t*) block_data))
     {
-      macho_parse_file(block_data, block->size, module_object, context);
+      macho_parse_file(
+          block_data, block->size, block->base, module_object, context);
       break;
     }
 
     // Parse fat Mach-O binary.
     if (is_fat_macho_file_block((uint32_t*) block_data))
     {
-      macho_parse_fat_file(block_data, block->size, module_object, context);
+      macho_parse_fat_file(
+          block_data, block->size, block->base, module_object, context);
       break;
     }
   }

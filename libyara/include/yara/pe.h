@@ -33,8 +33,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <yara/endian.h>
 #include <yara/types.h>
 
-#pragma pack(push, 1)
-
 #if defined(_WIN32) || defined(__CYGWIN__)
 #include <windows.h>
 
@@ -95,7 +93,7 @@ typedef uint64_t ULONGLONG;
 
 #endif
 
-#pragma pack(push, 2)
+#pragma pack(push, 1)
 
 typedef struct _IMAGE_DOS_HEADER
 {                   // DOS .EXE header
@@ -119,14 +117,6 @@ typedef struct _IMAGE_DOS_HEADER
   WORD e_res2[10];  // Reserved words
   LONG e_lfanew;    // File address of new exe header
 } IMAGE_DOS_HEADER, *PIMAGE_DOS_HEADER;
-
-#pragma pack(pop)
-
-//
-// File header format.
-//
-
-#pragma pack(push, 4)
 
 typedef struct _IMAGE_FILE_HEADER
 {
@@ -375,11 +365,12 @@ typedef struct _IMAGE_NT_HEADERS64
 // IMAGE_FIRST_SECTION doesn't need 32/64 versions since the file header is
 // the same either way.
 
-#define IMAGE_FIRST_SECTION(ntheader)                                   \
-  ((PIMAGE_SECTION_HEADER)(                                             \
-      (BYTE*) ntheader + offsetof(IMAGE_NT_HEADERS32, OptionalHeader) + \
-      yr_le16toh(((PIMAGE_NT_HEADERS32)(ntheader))                      \
-                     ->FileHeader.SizeOfOptionalHeader)))
+#define IMAGE_FIRST_SECTION(ntheader)                                      \
+  ((PIMAGE_SECTION_HEADER) ((BYTE*) ntheader +                             \
+                            offsetof(IMAGE_NT_HEADERS32, OptionalHeader) + \
+                            yr_le16toh(                                    \
+                                ((PIMAGE_NT_HEADERS32) (ntheader))         \
+                                    ->FileHeader.SizeOfOptionalHeader)))
 
 // Subsystem Values
 
@@ -548,8 +539,8 @@ typedef struct _IMAGE_THUNK_DATA64
 
 typedef struct _IMAGE_RESOURCE_DIR_STRING_U
 {
-    WORD    Length;
-    WCHAR   NameString[1];
+  WORD Length;
+  WCHAR NameString[1];
 } IMAGE_RESOURCE_DIR_STRING_U, *PIMAGE_RESOURCE_DIR_STRING_U;
 
 typedef struct _IMAGE_RESOURCE_DIRECTORY_ENTRY
@@ -602,8 +593,6 @@ typedef struct _IMAGE_DEBUG_DIRECTORY
   DWORD AddressOfRawData;
   DWORD PointerToRawData;
 } IMAGE_DEBUG_DIRECTORY, *PIMAGE_DEBUG_DIRECTORY;
-
-#pragma pack(pop)
 
 //
 // Symbol format.
@@ -739,22 +728,22 @@ typedef struct _IMAGE_SYMBOL_EX
 // MACROS
 
 // Basic Type of  x
-#define BTYPE(x) ((x) &N_BTMASK)
+#define BTYPE(x) ((x) & N_BTMASK)
 
 // Is x a pointer?
 #ifndef ISPTR
-#define ISPTR(x) (((x) &N_TMASK) == (IMAGE_SYM_DTYPE_POINTER << N_BTSHFT))
+#define ISPTR(x) (((x) & N_TMASK) == (IMAGE_SYM_DTYPE_POINTER << N_BTSHFT))
 #endif
 
 // Is x a function?
 #ifndef ISFCN
-#define ISFCN(x) (((x) &N_TMASK) == (IMAGE_SYM_DTYPE_FUNCTION << N_BTSHFT))
+#define ISFCN(x) (((x) & N_TMASK) == (IMAGE_SYM_DTYPE_FUNCTION << N_BTSHFT))
 #endif
 
 // Is x an array?
 
 #ifndef ISARY
-#define ISARY(x) (((x) &N_TMASK) == (IMAGE_SYM_DTYPE_ARRAY << N_BTSHFT))
+#define ISARY(x) (((x) & N_TMASK) == (IMAGE_SYM_DTYPE_ARRAY << N_BTSHFT))
 #endif
 
 // Is x a structure, union, or enumeration TAG?
@@ -767,17 +756,21 @@ typedef struct _IMAGE_SYMBOL_EX
 #ifndef INCREF
 #define INCREF(x)                                                            \
   ((((x) & ~N_BTMASK) << N_TSHIFT) | (IMAGE_SYM_DTYPE_POINTER << N_BTSHFT) | \
-   ((x) &N_BTMASK))
+   ((x) & N_BTMASK))
 #endif
 #ifndef DECREF
-#define DECREF(x) ((((x) >> N_TSHIFT) & ~N_BTMASK) | ((x) &N_BTMASK))
+#define DECREF(x) ((((x) >> N_TSHIFT) & ~N_BTMASK) | ((x) & N_BTMASK))
 #endif
 
-#endif  // _WIN32
+#pragma pack(pop)
+
+#endif  // _WIN32 || defined(__CYGWIN__)
 
 #define CVINFO_PDB70_CVSIGNATURE 0x53445352  // "RSDS"
 #define CVINFO_PDB20_CVSIGNATURE 0x3031424e  // "NB10"
-#define CODEVIEW_SIGNATURE_MTOC 0x434f544d  // "MTOC"
+#define CODEVIEW_SIGNATURE_MTOC  0x434f544d  // "MTOC"
+
+#pragma pack(push, 1)
 
 typedef struct _CV_HEADER
 {
@@ -862,6 +855,7 @@ typedef struct _WIN_CERTIFICATE
 #define IMAGE_DEBUG_TYPE_ILTCG           14
 #define IMAGE_DEBUG_TYPE_MPX             15
 #define IMAGE_DEBUG_TYPE_REPRO           16
+
 typedef struct _RICH_VERSION_INFO
 {
   DWORD id_version;  // tool id and version (use RICH_VERSION_ID and
@@ -872,14 +866,18 @@ typedef struct _RICH_VERSION_INFO
 typedef struct _RICH_SIGNATURE
 {
   DWORD dans;
-  DWORD key1;
-  DWORD key2;
-  DWORD key3;
+  DWORD padding_1;
+  DWORD padding_2;
+  DWORD padding_3;
   RICH_VERSION_INFO versions[0];
 } RICH_SIGNATURE, *PRICH_SIGNATURE;
 
 #define RICH_DANS 0x536e6144  // "DanS"
 #define RICH_RICH 0x68636952  // "Rich"
 
+#define PE_PAGE_SIZE   0x1000
+#define PE_SECTOR_SIZE 0x0200
+
 #pragma pack(pop)
+
 #endif
