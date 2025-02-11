@@ -61,7 +61,7 @@ as our starting point. The file looks like this:
         void* module_data,
         size_t module_data_size)
     {
-      set_string("Hello World!", module_object, "greeting");
+      yr_set_string("Hello World!", module_object, "greeting");
       return ERROR_SUCCESS;
     }
 
@@ -202,33 +202,34 @@ In our case the resulting *module_list* is::
 
 The second step is modifying the *Makefile.am* to tell the *make* program that
 the source code for your module must be compiled and linked into YARA. At the
-very beginning of *libyara/Makefile.am* you'll find this::
+very beginning of *Makefile.am* you'll find this::
 
-    MODULES =  modules/tests/tests.c
-    MODULES += modules/pe/pe.c
+    MODULES =  libyara/modules/tests/tests.c
+    MODULES += libyara/modules/pe/pe.c
 
     if CUCKOO_MODULE
-    MODULES += modules/cuckoo/cuckoo.c
+    MODULES += libyara/modules/cuckoo/cuckoo.c
     endif
 
 
 Just add a new line for your module::
 
-    MODULES =  modules/tests/tests.c
-    MODULES += modules/pe/pe.c
+    MODULES =  libyara/modules/tests/tests.c
+    MODULES += libyara/modules/pe/pe.c
 
     if CUCKOO_MODULE
-    MODULES += modules/cuckoo/cuckoo.c
+    MODULES += libyara/modules/cuckoo/cuckoo.c
     endif
 
-    MODULES += modules/demo/demo.c
+    MODULES += libyara/modules/demo/demo.c
 
 And that's all! Now you're ready to build YARA with your brand-new module
 included. Just go to the source tree root directory and type as always::
 
+    ./bootstrap.sh
+    ./configure
     make
     sudo make install
-
 
 Now you should be able to create a rule like this:
 
@@ -656,23 +657,26 @@ checks in your code nevertheless). In those cases you can use the
         const uint8_t* block_data;
 
         block = first_memory_block(context);
-        block_data = block->fetch_data(block)
-
-        if (block_data != NULL)
+        if (block != NULL)
         {
-          ..do something with the memory block
+          block_data = yr_fetch_block_data(block)
+
+          if (block_data != NULL)
+          {
+            ..do something with the memory block
+          }
         }
     }
 
-In the previous example you can also see how to use the ``fetch_data`` function.
-This function, which is a member of the ``YR_MEMORY_BLOCK`` structure, receives
-a pointer to the same block (as a ``self`` or ``this`` pointer) and returns a
-pointer to the block's data. Your module doesn't own the memory pointed to by
-this pointer, freeing that memory is not your responsibility. However keep in
-mind that the pointer is valid only until you ask for the next memory block. As
-long as you use the pointer within the scope of a ``foreach_memory_block`` you
-are on the safe side. Also take into account that ``fetch_data`` can return a
-NULL pointer, your code must be prepared for that case.
+In the previous example you can also see how to use the ``yr_fetch_block_data``
+function. This function receives a pointer to the same block (as a ``self`` or
+``this`` pointer) and returns a pointer to the block's data. Your module
+doesn't own the memory pointed to by this pointer, freeing that memory is not
+your responsibility. However keep in mind that the pointer is valid only until
+you ask for the next memory block. As long as you use the pointer within the
+scope of a ``foreach_memory_block`` you are on the safe side. Also take into
+account that ``yr_fetch_block_data`` can return a NULL pointer, your code must
+be prepared for that case.
 
 .. code-block:: c
 
@@ -680,7 +684,7 @@ NULL pointer, your code must be prepared for that case.
 
     foreach_memory_block(context, block)
     {
-      block_data = block->fetch_data(block);
+      block_data = yr_fetch_block_data(block);
 
       if (block_data != NULL)
       {
@@ -754,7 +758,7 @@ And the value for ``qux`` like this:
 
 Do you remember that the ``module_object`` argument for ``module_load`` was a
 pointer to a ``YR_OBJECT``? Do you remember that this ``YR_OBJECT`` is a
-structure just like ``bar`` is? Well, you could also set the values for ``bar``
+structure just like ``foo`` is? Well, you could also set the values for ``bar``
 and ``qux`` like this:
 
 .. code-block:: c
@@ -872,7 +876,7 @@ following example:
         void* module_data,
         size_t module_data_size)
     {
-        module->data = yr_malloc(sizeof(MY_DATA));
+        module_object->data = yr_malloc(sizeof(MY_DATA));
         ((MY_DATA*) module_object->data)->some_integer = 0;
 
         return ERROR_SUCCESS;
@@ -970,9 +974,9 @@ to the module's variables, or additional data stored in the ``data`` field of
 ``YR_OBJECT`` structures as discussed earlier in
 :ref:`storing-data-for-later-use`. But for that we need a way to get access to
 the corresponding ``YR_OBJECT`` first. There are two functions to do that:
-``module()`` and ``parent()``. The ``module()`` function returns a pointer to
+``yr_module()`` and ``yr_parent()``. The ``yr_module()`` function returns a pointer to
 the top-level ``YR_OBJECT`` corresponding to the module, the same one passed
-to the ``module_load`` function. The ``parent()`` function returns a pointer to
+to the ``module_load`` function. The ``yr_parent()`` function returns a pointer to
 the ``YR_OBJECT`` corresponding to the structure where the function is
 contained. For example, consider the following code snippet:
 
@@ -980,16 +984,16 @@ contained. For example, consider the following code snippet:
 
     define_function(f1)
     {
-        YR_OBJECT* module = module();
-        YR_OBJECT* parent = parent();
+        YR_OBJECT* module = yr_module();
+        YR_OBJECT* parent = yr_parent();
 
         // parent == module;
     }
 
     define_function(f2)
     {
-        YR_OBJECT* module = module();
-        YR_OBJECT* parent = parent();
+        YR_OBJECT* module = yr_module();
+        YR_OBJECT* parent = yr_parent();
 
         // parent != module;
     }
@@ -1022,4 +1026,4 @@ you get a pointer to the ``YR_SCAN_CONTEXT`` structure:
 
 .. code-block:: c
 
-    YR_SCAN_CONTEXT* context = scan_context();
+    YR_SCAN_CONTEXT* context = yr_scan_context();

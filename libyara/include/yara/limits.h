@@ -36,10 +36,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "utils.h"
 
-// Maximum length of file paths. This is the only limit that doesn't have the
-// YR_ prefix. The intention is using the default MAX_PATH if defined.
-#ifndef MAX_PATH
-#define MAX_PATH 1024
+// Maximum length of file paths.
+#ifndef YR_MAX_PATH
+#define YR_MAX_PATH 4096
 #endif
 
 // Maximum number of threads that can use a YR_RULES structure simultaneously.
@@ -112,6 +111,18 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // the scan will have a CALLBACK_MSG_TOO_MANY_MATCHES.
 #ifndef YR_MAX_STRING_MATCHES
 #define YR_MAX_STRING_MATCHES 1000000
+#endif
+
+// The number of matches before detecting slow scanning. If more matches are found
+// the scan will have a CALLBACK_MSG_TOO_SLOW_SCANNING.
+#ifndef YR_SLOW_STRING_MATCHES
+#define YR_SLOW_STRING_MATCHES 600000
+#endif
+
+// If size of the input is bigger then 0.2 MB and 0-length atoms are used
+// the scan will have a CALLBACK_MSG_TOO_SLOW_SCANNING.
+#ifndef YR_FILE_SIZE_THRESHOLD
+#define YR_FILE_SIZE_THRESHOLD 200000
 #endif
 
 // Maximum number of argument that a function in a YARA module can have.

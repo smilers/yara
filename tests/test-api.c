@@ -394,6 +394,179 @@ void test_too_many_matches()
   yr_finalize();
 }
 
+int ignore_too_slow_scanning(
+    YR_SCAN_CONTEXT* context,
+    int message,
+    void* message_data,
+    void* user_data)
+{
+  return CALLBACK_CONTINUE;
+}
+
+int propagate_too_slow_scanning(
+    YR_SCAN_CONTEXT* context,
+    int message,
+    void* message_data,
+    void* user_data)
+{
+  if (message == CALLBACK_MSG_TOO_SLOW_SCANNING)
+    return CALLBACK_ERROR;
+
+  return CALLBACK_CONTINUE;
+}
+
+void test_too_slow_scanning_slow_string_matches()
+{
+  YR_RULES* rules;
+
+  char* rules_str = "\
+      rule t { \
+        strings: \
+          $a = /a.{0,18}/ \
+        condition: \
+          $a \
+       }";
+
+  yr_initialize();
+
+  if (compile_rule(rules_str, &rules) != ERROR_SUCCESS)
+  {
+    perror("compile_rule");
+    exit(EXIT_FAILURE);
+  }
+
+  uint8_t* buffer = (uint8_t*) malloc(YR_SLOW_STRING_MATCHES+100);
+
+  if (buffer == NULL)
+  {
+    perror("malloc");
+    exit(EXIT_FAILURE);
+  }
+
+  memset(buffer, 'a', YR_SLOW_STRING_MATCHES+100);
+
+  int err = yr_rules_scan_mem(
+      rules,
+      (const uint8_t*) buffer,
+      YR_SLOW_STRING_MATCHES+100,
+      0,
+      propagate_too_slow_scanning,
+      NULL,
+      0);
+
+  if (err != ERROR_TOO_SLOW_SCANNING)
+  {
+    fprintf(
+        stderr,
+        "test_too_slow_scanning_slow_string_matches failed, expecting ERROR_TOO_SLOW_SCANNING, got "
+        "%d\n",
+        err);
+
+    free(buffer);
+    exit(EXIT_FAILURE);
+  }
+
+  err = yr_rules_scan_mem(
+      rules,
+      (const uint8_t*) buffer,
+      YR_SLOW_STRING_MATCHES+100,
+      0,
+      ignore_too_slow_scanning,
+      NULL,
+      0);
+
+  if (err != ERROR_SUCCESS)
+  {
+    fprintf(
+        stderr,
+        "test_too_slow_scanning_slow_string_matches failed, expecting ERROR_SUCCESS, got %d\n",
+        err);
+
+    free(buffer);
+    exit(EXIT_FAILURE);
+  }
+
+  free(buffer);
+  yr_rules_destroy(rules);
+  yr_finalize();
+}
+
+void test_too_slow_scanning()
+{
+  YR_RULES* rules;
+
+  char* rules_str = "\
+      rule t { \
+        strings: \
+          $a = /\\w+/ \
+        condition: \
+          $a \
+       }";
+
+  yr_initialize();
+
+  if (compile_rule(rules_str, &rules) != ERROR_SUCCESS)
+  {
+    perror("compile_rule");
+    exit(EXIT_FAILURE);
+  }
+
+  uint8_t* buffer = (uint8_t*) malloc(2 * YR_FILE_SIZE_THRESHOLD);
+
+  if (buffer == NULL)
+  {
+    perror("malloc");
+    exit(EXIT_FAILURE);
+  }
+
+  memset(buffer, 'a', 2 * YR_FILE_SIZE_THRESHOLD);
+
+  int err = yr_rules_scan_mem(
+      rules,
+      (const uint8_t*) buffer,
+      2 * YR_FILE_SIZE_THRESHOLD,
+      0,
+      propagate_too_slow_scanning,
+      NULL,
+      0);
+
+  if (err != ERROR_TOO_SLOW_SCANNING)
+  {
+    fprintf(
+        stderr,
+        "test_too_slow_scanning failed, expecting ERROR_TOO_SLOW_SCANNING, got "
+        "%d\n",
+        err);
+
+    free(buffer);
+    exit(EXIT_FAILURE);
+  }
+
+  err = yr_rules_scan_mem(
+      rules,
+      (const uint8_t*) buffer,
+      2 * CALLBACK_MSG_TOO_SLOW_SCANNING,
+      0,
+      ignore_too_slow_scanning,
+      NULL,
+      0);
+
+  if (err != ERROR_SUCCESS)
+  {
+    fprintf(
+        stderr,
+        "test_too_slow_scanning failed, expecting ERROR_SUCCESS, got %d\n",
+        err);
+
+    free(buffer);
+    exit(EXIT_FAILURE);
+  }
+
+  free(buffer);
+  yr_rules_destroy(rules);
+  yr_finalize();
+}
+
 void test_save_load_rules()
 {
   YR_COMPILER* compiler = NULL;
@@ -634,6 +807,96 @@ void test_scanner()
 
   yr_scanner_destroy(scanner1);
   yr_scanner_destroy(scanner2);
+  yr_rules_destroy(rules);
+  yr_finalize();
+}
+
+// Return CALLBACK_ERROR if the xor key for any string is anything other than 1.
+static int xor_key_check(
+    YR_SCAN_CONTEXT* context,
+    int message,
+    void *message_data,
+    void* user_data)
+{
+  if (message == CALLBACK_MSG_RULE_MATCHING)
+  {
+    YR_RULE* r = (YR_RULE*) message_data;
+    YR_STRING* s;
+
+    yr_rule_strings_foreach(r, s)
+    {
+      YR_MATCH* m;
+
+      yr_string_matches_foreach(context, s, m)
+      {
+        if (m->xor_key != 1)
+          return CALLBACK_ERROR;
+      }
+    }
+    return CALLBACK_CONTINUE;
+  }
+
+  return CALLBACK_ERROR;
+}
+
+// https://github.com/VirusTotal/yara/issues/1851
+void test_xor_key_string_in_atom()
+{
+  const char* buf = "UihrU\x01i\x01h\x01r\x01"; // "This" xor'ed with 0x01
+  const char* rules_str = "\
+      rule test { \
+        strings: \
+          $a = \"This\" xor(1) \
+          $b = \"Th\" xor(1) wide \
+        condition: \
+          any of them \
+      }";
+
+  YR_COMPILER* compiler = NULL;
+  YR_RULES* rules = NULL;
+  YR_SCANNER* scanner = NULL;
+
+  yr_initialize();
+
+  if (yr_compiler_create(&compiler) != ERROR_SUCCESS)
+  {
+    perror("yr_compiler_create");
+    exit(EXIT_FAILURE);
+  }
+
+  if (yr_compiler_add_string(compiler, rules_str, NULL) != 0)
+  {
+    yr_compiler_destroy(compiler);
+    perror("yr_compiler_add_string");
+    exit(EXIT_FAILURE);
+  }
+
+  if (yr_compiler_get_rules(compiler, &rules) != ERROR_SUCCESS)
+  {
+    yr_compiler_destroy(compiler);
+    perror("yr_compiler_get_rules");
+    exit(EXIT_FAILURE);
+  }
+
+  yr_compiler_destroy(compiler);
+
+  if (yr_scanner_create(rules, &scanner) != ERROR_SUCCESS)
+  {
+    yr_rules_destroy(rules);
+    perror("yr_scanner_create");
+    exit(EXIT_FAILURE);
+  }
+
+  yr_scanner_set_callback(scanner, xor_key_check, NULL);
+
+  int err = yr_scanner_scan_mem(scanner, (uint8_t*) buf, strlen(buf));
+  if (err != ERROR_SUCCESS)
+  {
+    fprintf(stderr, "test_xor_key_string_in_atom failed");
+    exit(EXIT_FAILURE);
+  }
+
+  yr_scanner_destroy(scanner);
   yr_rules_destroy(rules);
   yr_finalize();
 }
@@ -1009,9 +1272,12 @@ int main(int argc, char** argv)
   test_max_string_per_rules();
   test_max_match_data();
   test_too_many_matches();
+  test_too_slow_scanning();
+  test_too_slow_scanning_slow_string_matches();
   test_include_callback();
   test_save_load_rules();
   test_scanner();
+  test_xor_key_string_in_atom();
   test_ast_callback();
   test_rules_stats();
   test_issue_834();

@@ -57,9 +57,13 @@ Available options are:
 
   Print only number of matches.
 
-.. option:: -d <identifier>=<value>
+.. option:: -d <identifier>=<value> --define=identifier=value
 
-  Define external variable.
+  Define external variable. This option can be used multiple times.
+
+.. option:: -q --disable-console-logs
+
+  Disable printing console log messages.
 
 .. option:: --fail-on-warnings
 
@@ -143,6 +147,12 @@ Available options are:
 .. option:: --scan-list
 
   Scan files listed in FILE, one per line.
+
+.. option:: --strict-escape
+
+  Print warnings if a string contains an invalid escape sequence.
+
+  .. versionadded:: 4.5.0
 
 .. option:: -z <size> --skip-larger=<size>
 

@@ -41,15 +41,15 @@ define_function(has_method_string)
 {
   SIZED_STRING* parsed_name;
   SIZED_STRING* method_name = sized_string_argument(1);
-  YR_OBJECT* module = module();
-  int64_t number_of_methods = get_integer(module, "number_of_methods");
+  YR_OBJECT* module = yr_module();
+  int64_t number_of_methods = yr_get_integer(module, "number_of_methods");
 
   if (number_of_methods == YR_UNDEFINED)
     return_integer(YR_UNDEFINED);
 
   for (int i = 0; i < number_of_methods; i++)
   {
-    parsed_name = get_string(module, "method[%i].name", i);
+    parsed_name = yr_get_string(module, "method[%i].name", i);
     if (parsed_name != NULL &&
         strcmp(parsed_name->c_string, method_name->c_string) == 0)
     {
@@ -66,22 +66,22 @@ define_function(has_method_and_class_string)
   SIZED_STRING* parsed_name;
   SIZED_STRING* class_name = sized_string_argument(1);
   SIZED_STRING* method_name = sized_string_argument(2);
-  YR_OBJECT* module = module();
-  int64_t number_of_methods = get_integer(module, "number_of_methods");
+  YR_OBJECT* module = yr_module();
+  int64_t number_of_methods = yr_get_integer(module, "number_of_methods");
 
   if (number_of_methods == YR_UNDEFINED)
     return_integer(YR_UNDEFINED);
 
   for (int i = 0; i < number_of_methods; i++)
   {
-    parsed_class = get_string(module, "method[%i].class_name", i);
+    parsed_class = yr_get_string(module, "method[%i].class_name", i);
     if (parsed_class != NULL &&
         strcmp(parsed_class->c_string, class_name->c_string) != 0)
     {
       continue;
     }
 
-    parsed_name = get_string(module, "method[%i].name", i);
+    parsed_name = yr_get_string(module, "method[%i].name", i);
     if (parsed_name != NULL &&
         strcmp(parsed_name->c_string, method_name->c_string) == 0)
     {
@@ -96,17 +96,17 @@ define_function(has_method_regexp)
 {
   SIZED_STRING* parsed_name;
   RE* regex = regexp_argument(1);
-  YR_OBJECT* module = module();
-  int64_t number_of_methods = get_integer(module, "number_of_methods");
+  YR_OBJECT* module = yr_module();
+  int64_t number_of_methods = yr_get_integer(module, "number_of_methods");
 
   if (number_of_methods == YR_UNDEFINED)
     return_integer(YR_UNDEFINED);
 
   for (int i = 0; i < number_of_methods; i++)
   {
-    parsed_name = get_string(module, "method[%i].name", i);
+    parsed_name = yr_get_string(module, "method[%i].name", i);
     if (parsed_name != NULL &&
-        yr_re_match(scan_context(), regex, parsed_name->c_string) != -1)
+        yr_re_match(yr_scan_context(), regex, parsed_name->c_string) != -1)
     {
       return_integer(1);
     }
@@ -120,24 +120,24 @@ define_function(has_method_and_class_regexp)
   SIZED_STRING* parsed_name;
   RE* class_regex = regexp_argument(1);
   RE* name_regex = regexp_argument(2);
-  YR_OBJECT* module = module();
-  int64_t number_of_methods = get_integer(module, "number_of_methods");
+  YR_OBJECT* module = yr_module();
+  int64_t number_of_methods = yr_get_integer(module, "number_of_methods");
 
   if (number_of_methods == YR_UNDEFINED)
     return_integer(YR_UNDEFINED);
 
   for (int i = 0; i < number_of_methods; i++)
   {
-    parsed_class = get_string(module, "method[%i].class_name", i);
+    parsed_class = yr_get_string(module, "method[%i].class_name", i);
     if (parsed_class != NULL &&
-        yr_re_match(scan_context(), class_regex, parsed_class->c_string) == -1)
+        yr_re_match(yr_scan_context(), class_regex, parsed_class->c_string) == -1)
     {
       continue;
     }
 
-    parsed_name = get_string(module, "method[%i].name", i);
+    parsed_name = yr_get_string(module, "method[%i].name", i);
     if (parsed_name != NULL &&
-        yr_re_match(scan_context(), name_regex, parsed_name->c_string) != -1)
+        yr_re_match(yr_scan_context(), name_regex, parsed_name->c_string) != -1)
     {
       return_integer(1);
     }
@@ -149,15 +149,15 @@ define_function(has_class_string)
 {
   SIZED_STRING* parsed_class;
   SIZED_STRING* class_name = sized_string_argument(1);
-  YR_OBJECT* module = module();
-  int64_t number_of_methods = get_integer(module, "number_of_methods");
+  YR_OBJECT* module = yr_module();
+  int64_t number_of_methods = yr_get_integer(module, "number_of_methods");
 
   if (number_of_methods == YR_UNDEFINED)
     return_integer(YR_UNDEFINED);
 
   for (int i = 0; i < number_of_methods; i++)
   {
-    parsed_class = get_string(module, "method[%i].class_name", i);
+    parsed_class = yr_get_string(module, "method[%i].class_name", i);
     if (parsed_class != NULL &&
         strcmp(parsed_class->c_string, class_name->c_string) == 0)
     {
@@ -172,17 +172,17 @@ define_function(has_class_regexp)
 {
   SIZED_STRING* parsed_class;
   RE* regex = regexp_argument(1);
-  YR_OBJECT* module = module();
-  int64_t number_of_methods = get_integer(module, "number_of_methods");
+  YR_OBJECT* module = yr_module();
+  int64_t number_of_methods = yr_get_integer(module, "number_of_methods");
 
   if (number_of_methods == YR_UNDEFINED)
     return_integer(YR_UNDEFINED);
 
   for (int i = 0; i < number_of_methods; i++)
   {
-    parsed_class = get_string(module, "method[%i].class_name", i);
+    parsed_class = yr_get_string(module, "method[%i].class_name", i);
     if (parsed_class != NULL &&
-        yr_re_match(scan_context(), regex, parsed_class->c_string) != -1)
+        yr_re_match(yr_scan_context(), regex, parsed_class->c_string) != -1)
     {
       return_integer(1);
     }
@@ -328,6 +328,8 @@ begin_declarations
     declare_string("class_name");
     declare_string("name");
     declare_string("proto");
+    declare_integer("static");
+    declare_integer("instance");
     declare_integer("field_idx_diff");
     declare_integer("access_flags");
   end_struct_array("field")
@@ -358,50 +360,62 @@ begin_declarations
       declare_integer("debug_info_off");
       declare_integer("insns_size");
       declare_string("insns");
-      declare_integer("padding");
-      begin_struct("tries")
-      end_struct("tries");
-      begin_struct_array("handlers")
-      end_struct_array("handlers");
     end_struct("code_item")
   end_struct_array("method")
 end_declarations
 
 // https://android.googlesource.com/platform/dalvik/+/android-4.4.2_r2/libdex/Leb128.cpp
 
-static int32_t read_uleb128(const uint8_t* pStream, uint32_t* size)
+static int32_t read_uleb128_bounded(
+    const uint8_t* pStream,
+    const uint8_t* pStreamEnd,
+    uint32_t* size,
+    bool* error)
 {
   const uint8_t* ptr = pStream;
+  int32_t result = 0;
 
-  int32_t result = *(ptr++);
+  *error = false;
+  if (ptr == pStreamEnd)
+    goto error;
+
+  result = *(ptr++);
   *size = *size + 1;
 
   if (result > 0x7f)
   {
+    if (ptr == pStreamEnd)
+      goto error;
     int cur = *(ptr++);
     *size = *size + 1;
     result = (result & 0x7f) | ((cur & 0x7f) << 7);
 
     if (cur > 0x7f)
     {
+      if (ptr == pStreamEnd)
+        goto error;
       cur = *(ptr++);
       *size = *size + 1;
       result |= (cur & 0x7f) << 14;
 
       if (cur > 0x7f)
       {
+        if (ptr == pStreamEnd)
+          goto error;
         cur = *(ptr++);
         *size = *size + 1;
         result |= (cur & 0x7f) << 21;
 
         if (cur > 0x7f)
         {
+          if (ptr == pStreamEnd)
+            goto error;
           /*
            * Note: We don't check to see if cur is out of
            * range here, meaning we tolerate garbage in the
            * high four-order bits.
            */
-          cur = *(ptr++);
+          cur = *ptr;
           *size = *size + 1;
           result |= cur << 28;
         }
@@ -409,6 +423,10 @@ static int32_t read_uleb128(const uint8_t* pStream, uint32_t* size)
     }
   }
 
+  return result;
+
+error:
+  *error = true;
   return result;
 }
 
@@ -418,14 +436,14 @@ static int64_t dex_get_integer(
     const char* pattern,
     int64_t index)
 {
-  if (index == YR_UNDEFINED)
+  if (index == YR_UNDEFINED || index < 0)
     return YR_UNDEFINED;
 
   // Impose a reasonably large limit to table indexes.
   if (index > 0x80000)
     return YR_UNDEFINED;
 
-  return get_integer(object, pattern, (int) index);
+  return yr_get_integer(object, pattern, (int) index);
 }
 
 
@@ -434,14 +452,14 @@ static SIZED_STRING* dex_get_string(
     const char* pattern,
     int64_t index)
 {
-  if (index == YR_UNDEFINED)
+  if (index == YR_UNDEFINED || index < 0)
     return NULL;
 
   // Impose a reasonably large limit to table indexes.
   if (index > 0x80000)
     return NULL;
 
-  return get_string(object, pattern, (int) index);
+  return yr_get_string(object, pattern, (int) index);
 }
 
 
@@ -470,84 +488,78 @@ dex_header_t* dex_get_header(const uint8_t* data, size_t data_size)
 
 void dex_parse_header(dex_header_t* dex_header, YR_OBJECT* module_object)
 {
-  set_sized_string(
-      (char*) dex_header->magic,
-      strnlen((char*) dex_header->magic, 8 * sizeof(char)),
-      module_object,
-      "header.magic");
+  yr_set_sized_string(
+      (char*) dex_header->magic, 8, module_object, "header.magic");
 
-  set_integer(
+  yr_set_integer(
       yr_le32toh(dex_header->checksum), module_object, "header.checksum");
 
-  set_sized_string(
-      (char*) dex_header->signature,
-      strnlen((char*) dex_header->signature, 20 * sizeof(char)),
-      module_object,
-      "header.signature");
+  yr_set_sized_string(
+      (char*) dex_header->signature, 20, module_object, "header.signature");
 
-  set_integer(
+  yr_set_integer(
       yr_le32toh(dex_header->file_size), module_object, "header.file_size");
-  set_integer(
+  yr_set_integer(
       yr_le32toh(dex_header->header_size), module_object, "header.header_size");
-  set_integer(
+  yr_set_integer(
       yr_le32toh(dex_header->endian_tag), module_object, "header.endian_tag");
-  set_integer(
+  yr_set_integer(
       yr_le32toh(dex_header->link_size), module_object, "header.link_size");
-  set_integer(
+  yr_set_integer(
       yr_le32toh(dex_header->link_offset), module_object, "header.link_offset");
-  set_integer(
+  yr_set_integer(
       yr_le32toh(dex_header->map_offset), module_object, "header.map_offset");
-  set_integer(
+  yr_set_integer(
       yr_le32toh(dex_header->string_ids_size),
       module_object,
       "header.string_ids_size");
-  set_integer(
+  yr_set_integer(
       yr_le32toh(dex_header->string_ids_offset),
       module_object,
       "header.string_ids_offset");
-  set_integer(
+  yr_set_integer(
       yr_le32toh(dex_header->type_ids_size),
       module_object,
       "header.type_ids_size");
-  set_integer(
+  yr_set_integer(
       yr_le32toh(dex_header->type_ids_offset),
       module_object,
       "header.type_ids_offset");
-  set_integer(
+  yr_set_integer(
       yr_le32toh(dex_header->proto_ids_size),
       module_object,
       "header.proto_ids_size");
-  set_integer(
+  yr_set_integer(
       yr_le32toh(dex_header->proto_ids_offset),
       module_object,
       "header.proto_ids_offset");
-  set_integer(
+  yr_set_integer(
       yr_le32toh(dex_header->field_ids_size),
       module_object,
       "header.field_ids_size");
-  set_integer(
+  yr_set_integer(
       yr_le32toh(dex_header->field_ids_offset),
       module_object,
       "header.field_ids_offset");
-  set_integer(
+  yr_set_integer(
       yr_le32toh(dex_header->method_ids_size),
       module_object,
       "header.method_ids_size");
-  set_integer(
+  yr_set_integer(
       yr_le32toh(dex_header->method_ids_offset),
       module_object,
       "header.method_ids_offset");
-  set_integer(
+  yr_set_integer(
       yr_le32toh(dex_header->class_defs_size),
       module_object,
       "header.class_defs_size");
-  set_integer(
+  yr_set_integer(
       yr_le32toh(dex_header->class_defs_offset),
       module_object,
       "header.class_defs_offset");
-  set_integer(
+  yr_set_integer(
       yr_le32toh(dex_header->data_size), module_object, "header.data_size");
-  set_integer(
+  yr_set_integer(
       yr_le32toh(dex_header->data_offset), module_object, "header.data_offset");
 }
 
@@ -564,35 +576,43 @@ uint32_t load_encoded_field(
   printf("[DEX] Parse encoded field start_offset:0x%zx\n", start_offset);
 #endif
 
+  const uint8_t* data_cur_start = dex->data + start_offset;
   if (!fits_in_dex(dex, dex->data + start_offset, sizeof(uint32_t) * 2))
     return 0;
 
+  const uint8_t* data_end = dex->data + dex->data_size;
   uint32_t current_size = 0;
-
+  bool error = false;
   encoded_field_t encoded_field;
 
-  encoded_field.field_idx_diff = (uint32_t) read_uleb128(
-      (dex->data + start_offset + current_size), &current_size);
+  encoded_field.field_idx_diff =
+      (uint32_t) read_uleb128_bounded((dex->data + start_offset + current_size),
+                                      data_end, &current_size, &error);
+  if (error)
+    return 0;
 
-  encoded_field.access_flags = (uint32_t) read_uleb128(
-      (dex->data + start_offset + current_size), &current_size);
+  encoded_field.access_flags =
+      (uint32_t) read_uleb128_bounded((dex->data + start_offset + current_size),
+                                      data_end, &current_size, &error);
+  if (error)
+    return 0;
 
-  set_integer(
+  yr_set_integer(
       encoded_field.field_idx_diff,
       dex->object,
       "field[%i].field_idx_diff",
       index_encoded_field);
 
-  set_integer(
+  yr_set_integer(
       encoded_field.access_flags,
       dex->object,
       "field[%i].access_flags",
       index_encoded_field);
 
-  set_integer(
+  yr_set_integer(
       static_field, dex->object, "field[%i].static", index_encoded_field);
 
-  set_integer(
+  yr_set_integer(
       instance_field, dex->object, "field[%i].instance", index_encoded_field);
 
   *previous_field_idx = encoded_field.field_idx_diff + *previous_field_idx;
@@ -619,10 +639,10 @@ uint32_t load_encoded_field(
   {
 #ifdef DEBUG_DEX_MODULE
     printf(
-        "[DEX]\tFIELD_NAME %s NAME_IDX 0x%x\n", field_name->c_string, name_idx);
+        "[DEX]\tFIELD_NAME %s NAME_IDX 0x%llx\n", field_name->c_string, name_idx);
 #endif
 
-    set_sized_string(
+    yr_set_sized_string(
         field_name->c_string,
         field_name->length,
         dex->object,
@@ -643,13 +663,13 @@ uint32_t load_encoded_field(
   {
 #ifdef DEBUG_DEX_MODULE
     printf(
-        "[DEX]\tCLASS_NAME %s CLASS_IDX 0x%x DESCRIPTOR_IDX 0x%x\n",
+        "[DEX]\tCLASS_NAME %s CLASS_IDX 0x%llx DESCRIPTOR_IDX 0x%llx\n",
         class_name->c_string,
         class_idx,
         descriptor_idx);
 #endif
 
-    set_sized_string(
+    yr_set_sized_string(
         class_name->c_string,
         class_name->length,
         dex->object,
@@ -676,7 +696,7 @@ uint32_t load_encoded_field(
         shorty_idx);
 #endif
 
-    set_sized_string(
+    yr_set_sized_string(
         proto_name->c_string,
         proto_name->length,
         dex->object,
@@ -700,43 +720,52 @@ uint32_t load_encoded_method(
   printf("[DEX] Parse encoded method start_offset:0x%zx\n", start_offset);
 #endif
 
-  if (!fits_in_dex(dex, dex->data + start_offset, sizeof(uint32_t) * 3))
+  const uint8_t* data_cur_start = dex->data + start_offset;
+  if (!fits_in_dex(dex, data_cur_start, sizeof(uint32_t) * 3))
     return 0;
 
+  const uint8_t* data_end = dex->data + dex->data_size;
   uint32_t current_size = 0;
+  bool error = false;
   encoded_method_t encoded_method;
 
-  encoded_method.method_idx_diff = (uint32_t) read_uleb128(
-      (dex->data + start_offset + current_size), &current_size);
+  encoded_method.method_idx_diff = (uint32_t) read_uleb128_bounded(
+      (data_cur_start + current_size), data_end, &current_size, &error);
+  if (error)
+    return 0;
 
-  encoded_method.access_flags = (uint32_t) read_uleb128(
-      (dex->data + start_offset + current_size), &current_size);
+  encoded_method.access_flags = (uint32_t) read_uleb128_bounded(
+      (data_cur_start + current_size), data_end, &current_size, &error);
+  if (error)
+    return 0;
 
-  encoded_method.code_off = (uint32_t) read_uleb128(
-      (dex->data + start_offset + current_size), &current_size);
+  encoded_method.code_off = (uint32_t) read_uleb128_bounded(
+      (data_cur_start + current_size), data_end, &current_size, &error);
+  if (error)
+    return 0;
 
-  set_integer(
+  yr_set_integer(
       encoded_method.method_idx_diff,
       dex->object,
       "method[%i].method_idx_diff",
       index_encoded_method);
 
-  set_integer(
+  yr_set_integer(
       encoded_method.access_flags,
       dex->object,
       "method[%i].access_flags",
       index_encoded_method);
 
-  set_integer(
+  yr_set_integer(
       encoded_method.code_off,
       dex->object,
       "method[%i].code_off",
       index_encoded_method);
 
-  set_integer(
+  yr_set_integer(
       direct_method, dex->object, "method[%i].direct", index_encoded_method);
 
-  set_integer(
+  yr_set_integer(
       virtual_method, dex->object, "method[%i].virtual", index_encoded_method);
 
   *previous_method_idx = encoded_method.method_idx_diff + *previous_method_idx;
@@ -748,7 +777,7 @@ uint32_t load_encoded_method(
     return 0;
 
 #ifdef DEBUG_DEX_MODULE
-  printf("[DEX]\tNAME_IDX 0x%x\n", name_idx);
+  printf("[DEX]\tNAME_IDX 0x%llx\n", name_idx);
 #endif
 
 #ifdef DEBUG_DEX_MODULE
@@ -768,12 +797,12 @@ uint32_t load_encoded_method(
   {
 #ifdef DEBUG_DEX_MODULE
     printf(
-        "[DEX]\tMETHOD_NAME %s NAME_IDX 0x%x\n",
+        "[DEX]\tMETHOD_NAME %s NAME_IDX 0x%llx\n",
         method_name->c_string,
         name_idx);
 #endif
 
-    set_sized_string(
+    yr_set_sized_string(
         method_name->c_string,
         method_name->length,
         dex->object,
@@ -794,13 +823,13 @@ uint32_t load_encoded_method(
   {
 #ifdef DEBUG_DEX_MODULE
     printf(
-        "[DEX]\tCLASS_NAME %s CLASS_IDX 0x%x DESCRIPTOR_IDX:0x%x\n",
+        "[DEX]\tCLASS_NAME %s CLASS_IDX 0x%llx DESCRIPTOR_IDX:0x%llx\n",
         class_name->c_string,
         class_idx,
         descriptor_idx);
 #endif
 
-    set_sized_string(
+    yr_set_sized_string(
         class_name->c_string,
         class_name->length,
         dex->object,
@@ -821,13 +850,13 @@ uint32_t load_encoded_method(
   {
 #ifdef DEBUG_DEX_MODULE
     printf(
-        "[DEX]\tPROTO_NAME %s CLASS_IDX 0x%x DESCRIPTOR_IDX:0x%x\n",
+        "[DEX]\tPROTO_NAME %s CLASS_IDX 0x%llx DESCRIPTOR_IDX:0x%llx\n",
         proto_name->c_string,
         class_idx,
         descriptor_idx);
 #endif
 
-    set_sized_string(
+    yr_set_sized_string(
         proto_name->c_string,
         proto_name->length,
         dex->object,
@@ -842,37 +871,37 @@ uint32_t load_encoded_method(
 #endif
 
     if (struct_fits_in_dex(
-            dex, dex->data + encoded_method.code_off, sizeof(code_item_t)))
+            dex, dex->data + encoded_method.code_off, code_item_t))
     {
       code_item_t* code_item =
           (code_item_t*) (dex->data + encoded_method.code_off);
 
-      set_integer(
+      yr_set_integer(
           code_item->registers_size,
           dex->object,
           "method[%i].code_item.registers_size",
           index_encoded_method);
-      set_integer(
+      yr_set_integer(
           code_item->ins_size,
           dex->object,
           "method[%i].code_item.ins_size",
           index_encoded_method);
-      set_integer(
+      yr_set_integer(
           code_item->outs_size,
           dex->object,
           "method[%i].code_item.outs_size",
           index_encoded_method);
-      set_integer(
+      yr_set_integer(
           code_item->tries_size,
           dex->object,
           "method[%i].code_item.tries_size",
           index_encoded_method);
-      set_integer(
+      yr_set_integer(
           code_item->debug_info_off,
           dex->object,
           "method[%i].code_item.debug_info_off",
           index_encoded_method);
-      set_integer(
+      yr_set_integer(
           code_item->insns_size,
           dex->object,
           "method[%i].code_item.insns_size",
@@ -883,7 +912,7 @@ uint32_t load_encoded_method(
               dex->data + encoded_method.code_off + sizeof(code_item_t),
               code_item->insns_size * 2))
       {
-        set_sized_string(
+        yr_set_sized_string(
             (const char*) (dex->data + encoded_method.code_off + sizeof(code_item_t)),
             code_item->insns_size * 2,
             dex->object,
@@ -908,6 +937,8 @@ void dex_parse(DEX* dex, uint64_t base_address)
   uint32_t index_class_data_item = 0;
   uint32_t index_encoded_method = 0;
   uint32_t index_encoded_field = 0;
+
+  const uint8_t* data_end = dex->data + dex->data_size;
 
   if (!struct_fits_in_dex(dex, dex->data, dex_header_t))
     return;
@@ -944,9 +975,12 @@ void dex_parse(DEX* dex, uint64_t base_address)
             sizeof(uint32_t)))
       continue;
 
-    uint32_t value = (uint32_t) read_uleb128(
+    bool error = false;
+    uint32_t value = (uint32_t) read_uleb128_bounded(
         (dex->data + yr_le32toh(string_id_item->string_data_offset)),
-        &uleb128_size);
+        data_end, &uleb128_size, &error);
+    if (error)
+      continue;
 
 #ifdef DEBUG_DEX_MODULE
     printf("[DEX] STRING ID item size:0x%x\n", value);
@@ -954,21 +988,21 @@ void dex_parse(DEX* dex, uint64_t base_address)
 
     if (!fits_in_dex(
             dex,
-            dex->data + yr_le32toh(string_id_item->string_data_offset),
+            dex->data + yr_le32toh(string_id_item->string_data_offset) + 1,
             value))
       continue;
 
-    set_integer(
+    yr_set_integer(
         yr_le32toh(string_id_item->string_data_offset),
         dex->object,
         "string_ids[%i].offset",
         i);
 
-    set_integer(value, dex->object, "string_ids[%i].size", i);
+    yr_set_integer(value, dex->object, "string_ids[%i].size", i);
 
-    set_sized_string(
-        (const char*) ((
-            dex->data + yr_le32toh(string_id_item->string_data_offset) + 1)),
+    yr_set_sized_string(
+        (const char*) (
+            dex->data + yr_le32toh(string_id_item->string_data_offset) + 1),
         value,
         dex->object,
         "string_ids[%i].value",
@@ -991,7 +1025,7 @@ void dex_parse(DEX* dex, uint64_t base_address)
     type_id_item_t* type_id_item =
         (type_id_item_t*) (dex->data + yr_le32toh(dex_header->type_ids_offset) + i * sizeof(type_id_item_t));
 
-    set_integer(
+    yr_set_integer(
         yr_le32toh(type_id_item->descriptor_idx),
         dex->object,
         "type_ids[%i].descriptor_idx",
@@ -1014,17 +1048,17 @@ void dex_parse(DEX* dex, uint64_t base_address)
     proto_id_item_t* proto_id_item =
         (proto_id_item_t*) (dex->data + yr_le32toh(dex_header->proto_ids_offset) + i * sizeof(proto_id_item_t));
 
-    set_integer(
+    yr_set_integer(
         yr_le32toh(proto_id_item->shorty_idx),
         dex->object,
         "proto_ids[%i].shorty_idx",
         i);
-    set_integer(
+    yr_set_integer(
         yr_le32toh(proto_id_item->return_type_idx),
         dex->object,
         "proto_ids[%i].return_type_idx",
         i);
-    set_integer(
+    yr_set_integer(
         yr_le32toh(proto_id_item->parameters_offset),
         dex->object,
         "proto_ids[%i].parameters_offset",
@@ -1047,17 +1081,17 @@ void dex_parse(DEX* dex, uint64_t base_address)
     field_id_item_t* field_id_item =
         (field_id_item_t*) (dex->data + yr_le32toh(dex_header->field_ids_offset) + i * sizeof(field_id_item_t));
 
-    set_integer(
+    yr_set_integer(
         yr_le16toh(field_id_item->class_idx),
         dex->object,
         "field_ids[%i].class_idx",
         i);
-    set_integer(
+    yr_set_integer(
         yr_le16toh(field_id_item->type_idx),
         dex->object,
         "field_ids[%i].type_idx",
         i);
-    set_integer(
+    yr_set_integer(
         yr_le32toh(field_id_item->name_idx),
         dex->object,
         "field_ids[%i].name_idx",
@@ -1080,17 +1114,17 @@ void dex_parse(DEX* dex, uint64_t base_address)
     method_id_item_t* method_id_item =
         (method_id_item_t*) (dex->data + yr_le32toh(dex_header->method_ids_offset) + i * sizeof(method_id_item_t));
 
-    set_integer(
+    yr_set_integer(
         yr_le16toh(method_id_item->class_idx),
         dex->object,
         "method_ids[%i].class_idx",
         i);
-    set_integer(
+    yr_set_integer(
         yr_le16toh(method_id_item->proto_idx),
         dex->object,
         "method_ids[%i].proto_idx",
         i);
-    set_integer(
+    yr_set_integer(
         yr_le32toh(method_id_item->name_idx),
         dex->object,
         "method_ids[%i].name_idx",
@@ -1111,7 +1145,7 @@ void dex_parse(DEX* dex, uint64_t base_address)
     uint32_t* map_list_size =
         (uint32_t*) (dex->data + yr_le32toh(dex_header->map_offset));
 
-    set_integer(yr_le32toh(*map_list_size), dex->object, "map_list.size");
+    yr_set_integer(yr_le32toh(*map_list_size), dex->object, "map_list.size");
 
     if (!fits_in_dex(
             dex,
@@ -1124,22 +1158,25 @@ void dex_parse(DEX* dex, uint64_t base_address)
       map_item_t* map_item =
           (map_item_t*) (dex->data + yr_le32toh(dex_header->map_offset) + sizeof(uint32_t) + i * sizeof(map_item_t));
 
-      set_integer(
+      if (!struct_fits_in_dex(dex, map_item, map_item_t))
+        return;
+
+      yr_set_integer(
           yr_le16toh(map_item->type),
           dex->object,
           "map_list.map_item[%i].type",
           i);
-      set_integer(
+      yr_set_integer(
           yr_le16toh(map_item->unused),
           dex->object,
           "map_list.map_item[%i].unused",
           i);
-      set_integer(
+      yr_set_integer(
           yr_le32toh(map_item->size),
           dex->object,
           "map_list.map_item[%i].size",
           i);
-      set_integer(
+      yr_set_integer(
           yr_le32toh(map_item->offset),
           dex->object,
           "map_list.map_item[%i].offset",
@@ -1179,42 +1216,42 @@ void dex_parse(DEX* dex, uint64_t base_address)
         yr_le32toh(class_id_item->static_values_offset));
 #endif
 
-    set_integer(
+    yr_set_integer(
         yr_le32toh(class_id_item->class_idx),
         dex->object,
         "class_defs[%i].class_idx",
         i);
-    set_integer(
+    yr_set_integer(
         yr_le32toh(class_id_item->access_flags),
         dex->object,
         "class_defs[%i].access_flags",
         i);
-    set_integer(
+    yr_set_integer(
         yr_le32toh(class_id_item->super_class_idx),
         dex->object,
         "class_defs[%i].super_class_idx",
         i);
-    set_integer(
+    yr_set_integer(
         yr_le32toh(class_id_item->interfaces_offset),
         dex->object,
         "class_defs[%i].interfaces_offset",
         i);
-    set_integer(
+    yr_set_integer(
         yr_le32toh(class_id_item->source_file_idx),
         dex->object,
         "class_defs[%i].source_file_idx",
         i);
-    set_integer(
+    yr_set_integer(
         yr_le32toh(class_id_item->annotations_offset),
         dex->object,
         "class_defs[%i].annotations_offset",
         i);
-    set_integer(
+    yr_set_integer(
         yr_le32toh(class_id_item->class_data_offset),
         dex->object,
         "class_defs[%i].class_data_offset",
         i);
-    set_integer(
+    yr_set_integer(
         yr_le32toh(class_id_item->static_values_offset),
         dex->object,
         "class_defs[%i].static_values_offset",
@@ -1231,45 +1268,54 @@ void dex_parse(DEX* dex, uint64_t base_address)
         return;
 
       uleb128_size = 0;
+      bool error = false;
 
-      class_data_item.static_fields_size = (uint32_t) read_uleb128(
+      class_data_item.static_fields_size = (uint32_t) read_uleb128_bounded(
           (dex->data + yr_le32toh(class_id_item->class_data_offset)),
-          &uleb128_size);
+          data_end, &uleb128_size, &error);
+      if (error)
+        return;
 
-      class_data_item.instance_fields_size = (uint32_t) read_uleb128(
+      class_data_item.instance_fields_size = (uint32_t) read_uleb128_bounded(
           (dex->data + yr_le32toh(class_id_item->class_data_offset) +
            uleb128_size),
-          &uleb128_size);
+          data_end, &uleb128_size, &error);
+      if (error)
+        return;
 
-      class_data_item.direct_methods_size = (uint32_t) read_uleb128(
+      class_data_item.direct_methods_size = (uint32_t) read_uleb128_bounded(
           (dex->data + yr_le32toh(class_id_item->class_data_offset) +
            uleb128_size),
-          &uleb128_size);
+          data_end, &uleb128_size, &error);
+      if (error)
+        return;
 
-      class_data_item.virtual_methods_size = (uint32_t) read_uleb128(
+      class_data_item.virtual_methods_size = (uint32_t) read_uleb128_bounded(
           (dex->data + yr_le32toh(class_id_item->class_data_offset) +
            uleb128_size),
-          &uleb128_size);
+          data_end, &uleb128_size, &error);
+      if (error)
+        return;
 
-      set_integer(
+      yr_set_integer(
           class_data_item.static_fields_size,
           dex->object,
           "class_data_item[%i].static_fields_size",
           index_class_data_item);
 
-      set_integer(
+      yr_set_integer(
           class_data_item.instance_fields_size,
           dex->object,
           "class_data_item[%i].instance_fields_size",
           index_class_data_item);
 
-      set_integer(
+      yr_set_integer(
           class_data_item.direct_methods_size,
           dex->object,
           "class_data_item[%i].direct_methods_size",
           index_class_data_item);
 
-      set_integer(
+      yr_set_integer(
           class_data_item.virtual_methods_size,
           dex->object,
           "class_data_item[%i].virtual_methods_size",
@@ -1378,8 +1424,8 @@ void dex_parse(DEX* dex, uint64_t base_address)
     }
   }
 
-  set_integer(index_encoded_method, dex->object, "number_of_methods");
-  set_integer(index_encoded_field, dex->object, "number_of_fields");
+  yr_set_integer(index_encoded_method, dex->object, "number_of_methods");
+  yr_set_integer(index_encoded_field, dex->object, "number_of_fields");
 }
 
 
@@ -1406,60 +1452,65 @@ int module_load(
 
   dex_header_t* dex_header;
 
-  set_string(DEX_FILE_MAGIC_035, module_object, "DEX_FILE_MAGIC_035");
-  set_string(DEX_FILE_MAGIC_036, module_object, "DEX_FILE_MAGIC_036");
-  set_string(DEX_FILE_MAGIC_037, module_object, "DEX_FILE_MAGIC_037");
-  set_string(DEX_FILE_MAGIC_038, module_object, "DEX_FILE_MAGIC_038");
-  set_string(DEX_FILE_MAGIC_039, module_object, "DEX_FILE_MAGIC_039");
+  yr_set_sized_string(
+      DEX_FILE_MAGIC_035, 8, module_object, "DEX_FILE_MAGIC_035");
+  yr_set_sized_string(
+      DEX_FILE_MAGIC_036, 8, module_object, "DEX_FILE_MAGIC_036");
+  yr_set_sized_string(
+      DEX_FILE_MAGIC_037, 8, module_object, "DEX_FILE_MAGIC_037");
+  yr_set_sized_string(
+      DEX_FILE_MAGIC_038, 8, module_object, "DEX_FILE_MAGIC_038");
+  yr_set_sized_string(
+      DEX_FILE_MAGIC_039, 8, module_object, "DEX_FILE_MAGIC_039");
 
-  set_integer(0x12345678, module_object, "ENDIAN_CONSTANT");
-  set_integer(0x78563412, module_object, "REVERSE_ENDIAN_CONSTANT");
+  yr_set_integer(0x12345678, module_object, "ENDIAN_CONSTANT");
+  yr_set_integer(0x78563412, module_object, "REVERSE_ENDIAN_CONSTANT");
 
-  set_integer(0xffffffff, module_object, "NO_INDEX");
-  set_integer(0x1, module_object, "ACC_PUBLIC");
-  set_integer(0x2, module_object, "ACC_PRIVATE");
-  set_integer(0x4, module_object, "ACC_PROTECTED");
-  set_integer(0x8, module_object, "ACC_STATIC");
-  set_integer(0x10, module_object, "ACC_FINAL");
-  set_integer(0x20, module_object, "ACC_SYNCHRONIZED");
-  set_integer(0x40, module_object, "ACC_VOLATILE");
-  set_integer(0x40, module_object, "ACC_BRIDGE");
-  set_integer(0x80, module_object, "ACC_TRANSIENT");
-  set_integer(0x80, module_object, "ACC_VARARGS");
-  set_integer(0x100, module_object, "ACC_NATIVE");
-  set_integer(0x200, module_object, "ACC_INTERFACE");
-  set_integer(0x400, module_object, "ACC_ABSTRACT");
-  set_integer(0x800, module_object, "ACC_STRICT");
-  set_integer(0x1000, module_object, "ACC_SYNTHETIC");
-  set_integer(0x2000, module_object, "ACC_ANNOTATION");
-  set_integer(0x4000, module_object, "ACC_ENUM");
-  set_integer(0x10000, module_object, "ACC_CONSTRUCTOR");
-  set_integer(0x20000, module_object, "ACC_DECLARED_SYNCHRONIZED");
+  yr_set_integer(0xffffffff, module_object, "NO_INDEX");
+  yr_set_integer(0x1, module_object, "ACC_PUBLIC");
+  yr_set_integer(0x2, module_object, "ACC_PRIVATE");
+  yr_set_integer(0x4, module_object, "ACC_PROTECTED");
+  yr_set_integer(0x8, module_object, "ACC_STATIC");
+  yr_set_integer(0x10, module_object, "ACC_FINAL");
+  yr_set_integer(0x20, module_object, "ACC_SYNCHRONIZED");
+  yr_set_integer(0x40, module_object, "ACC_VOLATILE");
+  yr_set_integer(0x40, module_object, "ACC_BRIDGE");
+  yr_set_integer(0x80, module_object, "ACC_TRANSIENT");
+  yr_set_integer(0x80, module_object, "ACC_VARARGS");
+  yr_set_integer(0x100, module_object, "ACC_NATIVE");
+  yr_set_integer(0x200, module_object, "ACC_INTERFACE");
+  yr_set_integer(0x400, module_object, "ACC_ABSTRACT");
+  yr_set_integer(0x800, module_object, "ACC_STRICT");
+  yr_set_integer(0x1000, module_object, "ACC_SYNTHETIC");
+  yr_set_integer(0x2000, module_object, "ACC_ANNOTATION");
+  yr_set_integer(0x4000, module_object, "ACC_ENUM");
+  yr_set_integer(0x10000, module_object, "ACC_CONSTRUCTOR");
+  yr_set_integer(0x20000, module_object, "ACC_DECLARED_SYNCHRONIZED");
 
-  set_integer(0x0000, module_object, "TYPE_HEADER_ITEM");
-  set_integer(0x0001, module_object, "TYPE_STRING_ID_ITEM");
-  set_integer(0x0002, module_object, "TYPE_TYPE_ID_ITEM");
-  set_integer(0x0003, module_object, "TYPE_PROTO_ID_ITEM");
-  set_integer(0x0004, module_object, "TYPE_FIELD_ID_ITEM");
-  set_integer(0x0005, module_object, "TYPE_METHOD_ID_ITEM");
-  set_integer(0x0006, module_object, "TYPE_CLASS_DEF_ITEM");
-  set_integer(0x0007, module_object, "TYPE_CALL_SITE_ID_ITEM");
-  set_integer(0x0008, module_object, "TYPE_METHOD_HANDLE_ITEM");
-  set_integer(0x1000, module_object, "TYPE_MAP_LIST");
-  set_integer(0x1001, module_object, "TYPE_TYPE_LIST");
-  set_integer(0x1002, module_object, "TYPE_ANNOTATION_SET_REF_LIST");
-  set_integer(0x1003, module_object, "TYPE_ANNOTATION_SET_ITEM");
-  set_integer(0x2000, module_object, "TYPE_CLASS_DATA_ITEM");
-  set_integer(0x2001, module_object, "TYPE_CODE_ITEM");
-  set_integer(0x2002, module_object, "TYPE_STRING_DATA_ITEM");
-  set_integer(0x2003, module_object, "TYPE_DEBUG_INFO_ITEM");
-  set_integer(0x2004, module_object, "TYPE_ANNOTATION_ITEM");
-  set_integer(0x2005, module_object, "TYPE_ENCODED_ARRAY_ITEM");
-  set_integer(0x2006, module_object, "TYPE_ANNOTATIONS_DIRECTORY_ITEM");
+  yr_set_integer(0x0000, module_object, "TYPE_HEADER_ITEM");
+  yr_set_integer(0x0001, module_object, "TYPE_STRING_ID_ITEM");
+  yr_set_integer(0x0002, module_object, "TYPE_TYPE_ID_ITEM");
+  yr_set_integer(0x0003, module_object, "TYPE_PROTO_ID_ITEM");
+  yr_set_integer(0x0004, module_object, "TYPE_FIELD_ID_ITEM");
+  yr_set_integer(0x0005, module_object, "TYPE_METHOD_ID_ITEM");
+  yr_set_integer(0x0006, module_object, "TYPE_CLASS_DEF_ITEM");
+  yr_set_integer(0x0007, module_object, "TYPE_CALL_SITE_ID_ITEM");
+  yr_set_integer(0x0008, module_object, "TYPE_METHOD_HANDLE_ITEM");
+  yr_set_integer(0x1000, module_object, "TYPE_MAP_LIST");
+  yr_set_integer(0x1001, module_object, "TYPE_TYPE_LIST");
+  yr_set_integer(0x1002, module_object, "TYPE_ANNOTATION_SET_REF_LIST");
+  yr_set_integer(0x1003, module_object, "TYPE_ANNOTATION_SET_ITEM");
+  yr_set_integer(0x2000, module_object, "TYPE_CLASS_DATA_ITEM");
+  yr_set_integer(0x2001, module_object, "TYPE_CODE_ITEM");
+  yr_set_integer(0x2002, module_object, "TYPE_STRING_DATA_ITEM");
+  yr_set_integer(0x2003, module_object, "TYPE_DEBUG_INFO_ITEM");
+  yr_set_integer(0x2004, module_object, "TYPE_ANNOTATION_ITEM");
+  yr_set_integer(0x2005, module_object, "TYPE_ENCODED_ARRAY_ITEM");
+  yr_set_integer(0x2006, module_object, "TYPE_ANNOTATIONS_DIRECTORY_ITEM");
 
   foreach_memory_block(iterator, block)
   {
-    const uint8_t* block_data = block->fetch_data(block);
+    const uint8_t* block_data = yr_fetch_block_data(block);
 
     if (block_data == NULL)
       continue;

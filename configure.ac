@@ -1,4 +1,4 @@
-AC_INIT([yara], [4.2.0], [vmalvarez@virustotal.com])
+AC_INIT([yara], [4.5.2], [vmalvarez@virustotal.com])
 
 AM_SILENT_RULES([yes])
 AC_CONFIG_SRCDIR([cli/yara.c])
@@ -32,9 +32,6 @@ AC_C_INLINE
 # Defines WORDS_BIGENDIAN if building in a big-endian host.
 AC_C_BIGENDIAN
 
-# Arrange for 64-bit file offsets.
-AC_SYS_LARGEFILE
-
 LT_INIT
 AC_CANONICAL_HOST
 
@@ -42,7 +39,19 @@ case $host_alias in
      i?86-*-mingw*) CFLAGS="$CFLAGS -D__MINGW_USE_VC2005_COMPAT" ;;
 esac
 
-case $host_os in
+AC_ARG_ENABLE([proc-scan],
+  [AS_HELP_STRING([--disable-proc-scan], [disable process scanning])],
+  [if test x$enableval = xyes; then
+    AC_MSG_ERROR([
+*****************************************************************
+  Process scanning is enabled by default, remove --enable-proc-scan.
+*****************************************************************
+])
+  else
+    proc_interface=none
+    CFLAGS="$CFLAGS -DUSE_NO_PROC"
+  fi],
+  [case $host_os in
     darwin*) CFLAGS="$CFLAGS -I/opt/local/include"
              # Starting with Mac OS X 10.11 (El Capitan) the OpenSSL headers
              # are in /usr/local/opt/openssl/include
@@ -51,7 +60,7 @@ case $host_os in
              posix=true
              proc_interface=mach
              jemalloc_prefix=je_ ;;
-    mingw*|cygwin*) CFLAGS="$CFLAGS -DUSE_WINDOWS_PROC"
+    mingw*|msys*|cygwin*) CFLAGS="$CFLAGS -DUSE_WINDOWS_PROC"
             proc_interface=windows
             jemalloc_prefix= ;;
     linux*|netbsd*|dragonfly*|kfreebsd*)
@@ -74,7 +83,9 @@ case $host_os in
             CFLAGS="$CFLAGS -DUSE_NO_PROC"
             proc_interface=none
             jemalloc_prefix= ;;
-esac
+  esac])
+
+
 
 ACX_PTHREAD(
     [LIBS="$PTHREAD_LIBS $LIBS"
@@ -113,6 +124,13 @@ AC_ARG_ENABLE([address-sanitizer],
   [if test x$enableval = xyes; then
     address_sanitizer=true
   fi])
+
+AC_ARG_ENABLE([undefined-behaviour-sanitizer],
+  [AS_HELP_STRING([--enable-undefined-behaviour-sanitizer], [compiles with -fsanitize=undefined])],
+  [if test x$enableval = xyes; then
+    undefined_behaviour_sanitizer=true
+  fi])
+
 
 AC_ARG_ENABLE([profiling],
   [AS_HELP_STRING([--enable-profiling], [enable rules profiling support])],
@@ -237,6 +255,23 @@ AC_ARG_WITH([tcmalloc],
     PC_REQUIRES_PRIVATE="$PC_REQUIRES_PRIVATE tcmalloc"
   fi])
 
+AC_ARG_WITH([mimalloc],
+  [AS_HELP_STRING([--with-mimalloc],
+    [use mimalloc as the default heap allocator])],
+  [if test x$withval = xyes; then
+    if test "x$with_jemalloc" = "xyes"; then
+      AC_MSG_ERROR([Cannot compile with both mimalloc and jemalloc])
+    fi
+    if test "x$with_tcmalloc" = "xyes"; then
+      AC_MSG_ERROR([Cannot compile with both mimalloc and tcmalloc])
+    fi
+    mi_malloc=mi_malloc
+    AC_CHECK_LIB(mimalloc, $mi_malloc,,
+      AC_MSG_ERROR([please install https://github.com/microsoft/mimalloc]))
+    CFLAGS="$CFLAGS -DMIMALLOC $no_std_allocator"
+    PC_REQUIRES_PRIVATE="$PC_REQUIRES_PRIVATE mimalloc"
+  fi])
+
 AC_ARG_WITH([cpu-profiler],
   [AS_HELP_STRING([--with-cpu-profiler],
     [compile with CPU profiling support])],
@@ -252,20 +287,19 @@ AC_ARG_WITH([crypto],
 
 AS_IF([test "x$with_crypto" != "xno"],
   [
-    AC_CHECK_HEADERS([openssl/md5.h],, [have_crypto=no])
-    AC_CHECK_HEADERS([openssl/sha.h],, [have_crypto=no])
+    AC_CHECK_HEADERS([openssl/evp.h],, [have_crypto=no])
     AC_CHECK_HEADERS([openssl/asn1.h],, [have_crypto=no])
     AC_CHECK_HEADERS([openssl/crypto.h],, [have_crypto=no])
     AC_CHECK_HEADERS([openssl/bio.h],, [have_crypto=no])
     AC_CHECK_HEADERS([openssl/pkcs7.h],, [have_crypto=no])
     AC_CHECK_HEADERS([openssl/x509.h],, [have_crypto=no])
     AC_CHECK_HEADERS([openssl/safestack.h],, [have_crypto=no])
-    AC_CHECK_LIB(crypto, MD5_Init,, [have_crypto=no])
-    AC_CHECK_LIB(crypto, MD5_Update,, [have_crypto=no])
-    AC_CHECK_LIB(crypto, MD5_Final,, [have_crypto=no])
-    AC_CHECK_LIB(crypto, SHA256_Init,, [have_crypto=no])
-    AC_CHECK_LIB(crypto, SHA256_Update,, [have_crypto=no])
-    AC_CHECK_LIB(crypto, SHA256_Final,, [have_crypto=no])
+    AC_CHECK_LIB(crypto, EVP_DigestInit,, [have_crypto=no])
+    AC_CHECK_LIB(crypto, EVP_DigestUpdate,, [have_crypto=no])
+    AC_CHECK_LIB(crypto, EVP_DigestFinal,, [have_crypto=no])
+    AC_CHECK_LIB(crypto, EVP_md5,, [have_crypto=no])
+    AC_CHECK_LIB(crypto, EVP_sha1,, [have_crypto=no])
+    AC_CHECK_LIB(crypto, EVP_sha256,, [have_crypto=no])
   ],
   [
     have_crypto=no
@@ -325,6 +359,7 @@ AS_IF([test "x$have_crypto" = "xno"],
       ])
   ],
   [
+    build_authenticode_module=true # Authenticode relies on openssl
     build_hash_module=true
     CFLAGS="$CFLAGS -DHASH_MODULE"
     PC_REQUIRES_PRIVATE="$PC_REQUIRES_PRIVATE libcrypto"
@@ -340,9 +375,11 @@ AM_CONDITIONAL([POSIX], [test x$posix = xtrue])
 AM_CONDITIONAL([PROFILING_ENABLED], [test x$profiling_enabled = xtrue])
 AM_CONDITIONAL([OPTIMIZATION], [test x$optimization = xtrue])
 AM_CONDITIONAL([ADDRESS_SANITIZER], [test x$address_sanitizer = xtrue])
+AM_CONDITIONAL([UB_SANITIZER], [test x$undefined_behaviour_sanitizer = xtrue])
 AM_CONDITIONAL([CUCKOO_MODULE], [test x$build_cuckoo_module = xtrue])
 AM_CONDITIONAL([MAGIC_MODULE], [test x$build_magic_module = xtrue])
 AM_CONDITIONAL([HASH_MODULE], [test x$build_hash_module = xtrue])
+AM_CONDITIONAL([AUTHENTICODE_MODULE], [test x$build_authenticode_module = xtrue])
 AM_CONDITIONAL([DOTNET_MODULE], [test x$build_dotnet_module = xtrue])
 AM_CONDITIONAL([MACHO_MODULE], [test x$build_macho_module = xtrue])
 AM_CONDITIONAL([PB_TESTS_MODULE], [test x$build_pb_tests_module = xtrue])
@@ -359,11 +396,13 @@ AS_IF(
   [test x$proc_interface != xnone],[AC_DEFINE([HAVE_SCAN_PROC_IMPL],[1])],
   [test x$proc_interface = xnone],[AC_DEFINE([HAVE_SCAN_PROC_IMPL],[0])])
 
+# Configure TLSH function
+CFLAGS="$CFLAGS -DBUCKETS_128=1 -DCHECKSUM_1B=1"
+
 AC_SUBST([PC_REQUIRES_PRIVATE])
 AC_SUBST([PC_LIBS_PRIVATE])
 
 AC_CONFIG_FILES([Makefile])
-AC_CONFIG_FILES([libyara/Makefile])
-AC_CONFIG_FILES([libyara/yara.pc])
+AC_CONFIG_FILES([yara.pc])
 
 AC_OUTPUT
